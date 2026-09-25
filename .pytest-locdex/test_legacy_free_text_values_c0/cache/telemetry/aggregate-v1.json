@@ -1,0 +1,20 @@
+{
+  "buckets": {
+    "{\"cloud_model\":null,\"cloud_provider\":null,\"escalation_reason\":\"none\",\"language\":\"unknown\",\"local_model\":\"qwen\",\"period\":\"2026-09\",\"route\":\"none\",\"task_category\":\"other\"}": {
+      "dimensions": {
+        "cloud_model": null,
+        "cloud_provider": null,
+        "escalation_reason": "none",
+        "language": "unknown",
+        "local_model": "qwen",
+        "period": "2026-09",
+        "route": "none",
+        "task_category": "other"
+      },
+      "runs": 1,
+      "successes": 1,
+      "total_attempts": 1
+    }
+  },
+  "schema_version": 1
+}

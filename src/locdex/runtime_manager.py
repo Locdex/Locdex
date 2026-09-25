@@ -13,8 +13,10 @@ from pathlib import Path
 
 from .config import locdex_cache_dir
 
-RUNTIME_REQUIREMENT = "llama-cpp-python>=0.3.35,<0.4"
+RUNTIME_VERSION = "0.3.35"
+RUNTIME_REQUIREMENT = f"llama-cpp-python>={RUNTIME_VERSION},<0.4"
 WHEEL_BASE = "https://abetlen.github.io/llama-cpp-python/whl"
+GITHUB_RELEASE_BASE = "https://github.com/abetlen/llama-cpp-python/releases/download"
 SUPPORTED_CUDA_WHEELS = ("13.2", "13.0", "12.5", "12.4", "12.3", "12.2", "12.1", "11.8")
 
 
@@ -89,11 +91,13 @@ def _system_ram_gb() -> float | None:
 def _nvidia_profile() -> tuple[str, float | None, str | None] | None:
     if not shutil.which("nvidia-smi"):
         return None
-    query = _run_capture([
-        "nvidia-smi",
-        "--query-gpu=name,memory.total",
-        "--format=csv,noheader,nounits",
-    ])
+    query = _run_capture(
+        [
+            "nvidia-smi",
+            "--query-gpu=name,memory.total",
+            "--format=csv,noheader,nounits",
+        ]
+    )
     if not query:
         return None
     first = query.splitlines()[0]
@@ -154,7 +158,11 @@ def detect_hardware() -> HardwareProfile:
                 auto_gpu_layers=-1,
             )
 
-    if system == "Darwin" and machine in {"arm64", "aarch64"} and sys.version_info[:2] in {(3, 10), (3, 11), (3, 12)}:
+    if (
+        system == "Darwin"
+        and machine in {"arm64", "aarch64"}
+        and sys.version_info[:2] in {(3, 10), (3, 11), (3, 12)}
+    ):
         return HardwareProfile(
             system=system,
             machine=machine,
@@ -169,7 +177,11 @@ def detect_hardware() -> HardwareProfile:
         )
 
     if system == "Linux" and (shutil.which("rocminfo") or shutil.which("rocm-smi")):
-        name = _run_capture(["rocm-smi", "--showproductname"], timeout=3) if shutil.which("rocm-smi") else None
+        name = (
+            _run_capture(["rocm-smi", "--showproductname"], timeout=3)
+            if shutil.which("rocm-smi")
+            else None
+        )
         return HardwareProfile(
             system=system,
             machine=machine,
@@ -197,7 +209,6 @@ def detect_hardware() -> HardwareProfile:
             auto_gpu_layers=-1,
         )
 
-    
     if system in {"Linux", "Windows"} and shutil.which("vulkaninfo"):
         return HardwareProfile(
             system=system,
@@ -272,7 +283,7 @@ def _read_install_marker() -> dict | None:
         return None
 
 
-def _write_install_marker(profile: HardwareProfile) -> None:
+def _write_install_marker(profile: HardwareProfile, *, source: str = "locdex") -> None:
     path = _install_marker_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -282,6 +293,7 @@ def _write_install_marker(profile: HardwareProfile) -> None:
                 "fingerprint": profile.fingerprint,
                 "wheel_index": profile.wheel_index,
                 "version": installed_runtime_version(),
+                "source": source,
             },
             indent=2,
         ),
@@ -296,13 +308,30 @@ def installed_runtime_version() -> str | None:
         return None
 
 
+def _infer_installed_backend(profile: HardwareProfile, marker: dict) -> str | None:
+    marked = marker.get("backend")
+    if isinstance(marked, str) and marked:
+        return marked
+
+    # A manually installed runtime can only be safely inferred as CPU when
+    # hardware detection itself found no accelerated backend. On accelerated
+    # machines, a markerless wheel could be CPU or GPU-enabled, so report
+    # "unknown" rather than claiming the wrong backend.
+    if installed_runtime_version() is not None and profile.backend == "cpu":
+        return "cpu"
+    if installed_runtime_version() is not None:
+        return "unknown"
+    return None
+
+
 def runtime_status(refresh_hardware: bool = False) -> dict:
     profile = effective_hardware_profile(refresh=refresh_hardware)
     marker = _read_install_marker() or {}
+    version = installed_runtime_version()
     return {
-        "installed": installed_runtime_version() is not None,
-        "version": installed_runtime_version(),
-        "installed_backend": marker.get("backend"),
+        "installed": version is not None,
+        "version": version,
+        "installed_backend": _infer_installed_backend(profile, marker),
         "backend": profile.backend,
         "accelerator": profile.accelerator,
         "vram_gb": profile.vram_gb,
@@ -313,40 +342,91 @@ def runtime_status(refresh_hardware: bool = False) -> dict:
     }
 
 
-def install_runtime(force: bool = False) -> HardwareProfile:
-    profile = effective_hardware_profile(refresh=True)
-    marker = _read_install_marker() or {}
-    if (
-        installed_runtime_version()
-        and marker.get("backend") == profile.backend
-        and marker.get("fingerprint") == profile.fingerprint
-        and not force
-    ):
-        return profile
-
-    
-    command = [
+def _index_install_command(profile: HardwareProfile) -> list[str]:
+    return [
         sys.executable,
         "-m",
         "pip",
         "install",
         "--upgrade",
-        "--prefer-binary",
         "--only-binary=:all:",
+        "--timeout",
+        "120",
+        "--retries",
+        "4",
         RUNTIME_REQUIREMENT,
         "--extra-index-url",
         profile.wheel_index,
     ]
-    result = subprocess.run(command, check=False)
-    if result.returncode != 0:
-        raise RuntimeInstallError(
-            "Could not install a compatible prebuilt Locdex runtime for "
-            f"{profile.system}/{profile.machine}, Python {profile.python}, backend {profile.backend}. "
-            "Use Python 3.10-3.12 for the widest accelerated-wheel support, or run "
-            "`locdex runtime status` for the detected configuration."
-        )
+
+
+def _direct_release_wheel_url(profile: HardwareProfile) -> str | None:
+    # Verified official fallback for the generic CPU Windows AMD64 wheel.
+    # Other backends keep using their official wheel indexes until their
+    # direct-release asset matrix is tested on those platforms.
+    if profile.backend == "cpu" and profile.system == "Windows" and profile.machine in {"amd64", "x86_64"}:
+        filename = f"llama_cpp_python-{RUNTIME_VERSION}-py3-none-win_amd64.whl"
+        return f"{GITHUB_RELEASE_BASE}/v{RUNTIME_VERSION}/{filename}"
+    return None
+
+
+def _direct_install_command(url: str) -> list[str]:
+    return [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--upgrade",
+        "--only-binary=:all:",
+        "--timeout",
+        "120",
+        "--retries",
+        "4",
+        url,
+    ]
+
+
+def install_runtime(force: bool = False) -> HardwareProfile:
+    profile = effective_hardware_profile(refresh=True)
+    marker = _read_install_marker() or {}
+    version = installed_runtime_version()
+
+    if version and not force:
+        if marker.get("backend") == profile.backend and marker.get("fingerprint") == profile.fingerprint:
+            return profile
+
+        # Adopt a markerless manual CPU install on a CPU-only machine. This
+        # covers a direct official wheel install without forcing a re-download.
+        if not marker and profile.backend == "cpu":
+            cache_hardware_profile(profile)
+            _write_install_marker(profile, source="adopted-manual-install")
+            return profile
+
+    primary = subprocess.run(_index_install_command(profile), check=False)
+    install_source = "official-wheel-index"
+
+    if primary.returncode != 0:
+        fallback_url = _direct_release_wheel_url(profile)
+        if not fallback_url:
+            raise RuntimeInstallError(
+                "Could not install a compatible prebuilt Locdex runtime from the official wheel index, "
+                "and no verified direct-release fallback is available for "
+                f"{profile.system}/{profile.machine}, Python {profile.python}, backend {profile.backend}. "
+                "Locdex did not attempt a source build."
+            )
+
+        fallback = subprocess.run(_direct_install_command(fallback_url), check=False)
+        if fallback.returncode != 0:
+            raise RuntimeInstallError(
+                "Could not install the prebuilt Locdex runtime from either the official wheel index "
+                "or the verified GitHub release fallback. Locdex did not attempt a source build. "
+                "Check network access to github.com and retry `locdex runtime install`."
+            )
+        install_source = "official-github-release"
+
     if installed_runtime_version() is None:
         raise RuntimeInstallError("Runtime installer completed but llama-cpp-python is still unavailable.")
+
     cache_hardware_profile(profile)
-    _write_install_marker(profile)
+    _write_install_marker(profile, source=install_source)
     return profile
