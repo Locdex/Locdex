@@ -1,0 +1,2 @@
+[console_scripts]
+locdex = locdex.main:cli

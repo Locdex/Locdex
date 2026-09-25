@@ -1,6 +1,8 @@
 import os
 import tempfile
+
 from src.locdex.editor import extract_skeleton
+
 
 def test_extract_skeleton():
     """Verify that the editor extracts only signatures and ignores internal logic."""

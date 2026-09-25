@@ -1,4 +1,4 @@
-from src.locdex.safety import check_ast_security, is_safe_path, is_protected_path  # UPDATE IMPORT AT THE TOP
+from src.locdex.safety import is_protected_path, is_safe_path  # UPDATE IMPORT AT THE TOP
 
 # ... (keep all your existing ast security tests here) ...
 
@@ -39,3 +39,4 @@ def test_argument_injection_blocked():
     assert is_safe_path(".", "-malicious-flag.py") == False
     assert is_safe_path(".", "src/-malicious.py") == False
     assert is_safe_path(".", "--upload-pack") == False
+    

@@ -1,5 +1,7 @@
 import sys
-from src.locdex.validator import run_sandboxed, full_validation
+
+from src.locdex.validator import full_validation, run_sandboxed
+
 
 def test_run_sandboxed_success():
     """Verify that a safe, fast subprocess executes correctly."""
