@@ -51,8 +51,8 @@ def test_agent_cannot_commit_without_explicit_user_request(monkeypatch, tmp_path
     ])
     monkeypatch.setattr(agent, "get_runtime", lambda config: runtime)
 
-    result = agent.run_agent("fix app.py", repo_path=str(tmp_path), config=_config(tmp_path))
-
+    result = agent.run_agent("inspect app.py", repo_path=str(tmp_path), config=_config(tmp_path))
+    
     assert result["status"] == "completed"
     first_result = result["tool_calls"][0]["result"]
     assert "requires an explicit Git instruction" in first_result["error"]

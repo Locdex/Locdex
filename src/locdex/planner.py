@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-BUDGET_FILE = Path(".locdex_budget.json")
+from platformdirs import user_data_dir
+
+DATA_DIR = Path(user_data_dir("Locdex", "Locdex"))
+BUDGET_FILE = DATA_DIR / "usage_metrics.json"
 
 
 def load_budget() -> dict:
@@ -18,15 +21,11 @@ def load_budget() -> dict:
 
 
 def save_budget(data: dict) -> None:
+    BUDGET_FILE.parent.mkdir(parents=True, exist_ok=True)
     BUDGET_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 def record_usage(source: str, prompt: str = "", generated_text: str = "", cost_usd: float | None = None) -> None:
-    """Update routing counts and any provider-reported cloud cost.
-
-    Locdex does not invent savings or assume a particular vendor's price. When a
-    cloud adapter can provide a real cost estimate, pass it as `cost_usd`.
-    """
     del prompt, generated_text
     budget = load_budget()
     if source == "local":

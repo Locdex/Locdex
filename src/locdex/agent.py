@@ -6,8 +6,52 @@ from typing import Any
 from .agent_tools import TOOL_DESCRIPTIONS, ToolError, execute_tool
 from .config import LocalModelConfig, load_local_model_config
 from .local_runtime import get_runtime
+from .planner import record_usage
 
 MUTATING_GIT_TOOLS = {"git_add", "git_commit", "git_pull", "git_push"}
+WORKSPACE_MUTATING_TOOLS = {"write_file", "replace_in_file", "delete_path"}
+
+_CHANGE_KEYWORDS = (
+    "fix",
+    "correct",
+    "change",
+    "edit",
+    "modify",
+    "update",
+    "implement",
+    "add",
+    "remove",
+    "delete",
+    "create",
+    "write",
+    "refactor",
+    "rename",
+)
+
+_VALIDATION_KEYWORDS = (
+    "test",
+    "tests",
+    "pytest",
+    "unittest",
+    "check",
+    "checks",
+    "lint",
+    "verify",
+    "validation",
+)
+
+_TEST_COMMAND_MARKERS = {
+    "pytest",
+    "unittest",
+    "test",
+    "tests",
+    "jest",
+    "vitest",
+    "mocha",
+    "cargo",
+    "go",
+}
+
 
 def _git_tool_allowed(task: str, tool_name: str) -> bool:
     text = task.lower()
@@ -20,6 +64,88 @@ def _git_tool_allowed(task: str, tool_name: str) -> bool:
         "git_push": ("git push", "push", "publish branch"),
     }
     return any(phrase in text for phrase in keywords.get(tool_name, ()))
+
+
+def _task_requires_workspace_change(task: str) -> bool:
+    text = task.lower()
+    return any(keyword in text for keyword in _CHANGE_KEYWORDS)
+
+
+def _task_requests_validation(task: str) -> bool:
+    text = task.lower()
+    return any(keyword in text for keyword in _VALIDATION_KEYWORDS)
+
+
+def _successful_workspace_mutation(tool_calls: list[dict[str, Any]]) -> bool:
+    for call in tool_calls:
+        if call.get("tool") not in WORKSPACE_MUTATING_TOOLS:
+            continue
+        result = call.get("result")
+        if isinstance(result, dict) and result.get("ok") is True:
+            return True
+    return False
+
+
+def _looks_like_validation_call(call: dict[str, Any]) -> bool:
+    tool = str(call.get("tool", ""))
+    if tool == "run_tests":
+        return True
+    if tool != "run_command":
+        return False
+
+    args = call.get("args")
+    if not isinstance(args, dict):
+        return False
+    argv = args.get("argv")
+    if not isinstance(argv, list):
+        return False
+
+    normalized = {str(part).lower() for part in argv}
+    return bool(normalized & _TEST_COMMAND_MARKERS)
+
+
+def _validation_state(tool_calls: list[dict[str, Any]]) -> tuple[bool, bool, bool]:
+    """Return (attempted, passed, unavailable)."""
+    attempted = False
+    passed = False
+    unavailable = False
+
+    for call in tool_calls:
+        if not _looks_like_validation_call(call):
+            continue
+
+        attempted = True
+        result = call.get("result")
+        if not isinstance(result, dict):
+            continue
+
+        if result.get("ok") is True:
+            passed = True
+            continue
+
+        if result.get("returncode") is None and "No supported test runner" in str(result.get("output", "")):
+            unavailable = True
+
+    return attempted, passed, unavailable
+
+
+def _append_premature_final_feedback(
+    messages: list[dict[str, str]],
+    decision: dict[str, Any],
+    reason: str,
+) -> None:
+    messages.append({"role": "assistant", "content": json.dumps(decision, ensure_ascii=False)})
+    messages.append(
+        {
+            "role": "user",
+            "content": (
+                "You attempted to finish, but Locdex cannot mark this task complete yet. "
+                f"{reason} Continue using the available tools. Do not claim work was performed "
+                "unless the corresponding tool result proves it."
+            ),
+        }
+    )
+
 
 AGENT_RESPONSE_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -54,6 +180,7 @@ Operating rules:
 7. Keep edits scoped to the request. Do not rewrite unrelated files.
 8. If the task truly exceeds the local model after inspection, return action='escalate' with a concise reason. Do not escalate just because the task is large.
 9. When finished, return action='final' with a concise summary of what you changed, tests/checks run, and any relevant caveat. Do not include giant code dumps in final.
+10. A final answer is accepted only when tool evidence supports it. For edit/fix tasks, a successful workspace mutation must have occurred. If the user explicitly requested tests/checks, Locdex must observe the requested validation before accepting completion.
 
 WORKSPACE CONTEXT:
 {extra_context}
@@ -76,11 +203,42 @@ def run_agent(
     ]
     tool_calls: list[dict[str, Any]] = []
 
+    requires_change = _task_requires_workspace_change(task)
+    requests_validation = _task_requests_validation(task)
+
     for step in range(1, config.max_agent_steps + 1):
         decision = runtime.json_completion(messages, AGENT_RESPONSE_SCHEMA)
+        record_usage("local")
         action = decision.get("action")
 
         if action == "final":
+            mutated = _successful_workspace_mutation(tool_calls)
+            validation_attempted, validation_passed, validation_unavailable = _validation_state(tool_calls)
+
+            if requires_change and not mutated:
+                _append_premature_final_feedback(
+                    messages,
+                    decision,
+                    "The request requires a workspace change, but no successful write/edit/delete tool has run.",
+                )
+                continue
+
+            if requests_validation and not validation_attempted:
+                _append_premature_final_feedback(
+                    messages,
+                    decision,
+                    "The user explicitly requested tests/checks, but no validation command has been attempted.",
+                )
+                continue
+
+            if requests_validation and validation_attempted and not (validation_passed or validation_unavailable):
+                _append_premature_final_feedback(
+                    messages,
+                    decision,
+                    "The requested validation has not passed. Inspect the failure, make any needed correction, and run it again.",
+                )
+                continue
+
             return {
                 "status": "completed",
                 "confidence": float(decision.get("confidence", 0.85)),
@@ -117,10 +275,12 @@ def run_agent(
 
         tool_calls.append({"tool": tool_name, "args": tool_args, "result": result})
         messages.append({"role": "assistant", "content": json.dumps(decision, ensure_ascii=False)})
-        messages.append({
-            "role": "user",
-            "content": f"TOOL RESULT for {tool_name}:\n{json.dumps(result, ensure_ascii=False)[:24000]}",
-        })
+        messages.append(
+            {
+                "role": "user",
+                "content": f"TOOL RESULT for {tool_name}:\n{json.dumps(result, ensure_ascii=False)[:24000]}",
+            }
+        )
 
     return {
         "status": "incomplete",
