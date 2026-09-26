@@ -18,6 +18,21 @@ class ModelProfile:
 
 
 MODEL_PROFILES: dict[str, ModelProfile] = {
+    "smoke": ModelProfile(
+        key="smoke",
+        display_name="Qwen2.5-Coder 1.5B Instruct (Q4_K_M)",
+        repo_id="Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF",
+        filename_pattern="qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+        expected_sha256="cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046",
+        approximate_size_gb=1.12,
+        minimum_ram_gb=4,
+        recommended_ram_gb=8,
+        status="development",
+        description=(
+            "Small development-only model for runtime, inference, and agent smoke tests on low-spec hardware. "
+            "Not the recommended production Locdex coding model."
+        ),
+    ),
     "qwen": ModelProfile(
         key="qwen",
         display_name="Qwen3-Coder 30B-A3B Instruct (Q4_K_M)",
