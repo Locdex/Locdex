@@ -131,6 +131,8 @@ def load_local_model_config(model_key: str | None = None) -> LocalModelConfig:
         except ValueError:
             gpu_layers = None
 
+    default_agent_steps = 20 if profile.key == "smoke" else 12
+
     return LocalModelConfig(
         model_key=profile.key,
         repo_id=os.environ.get("LOCDEX_MODEL_REPO", profile.repo_id).strip(),
@@ -145,5 +147,5 @@ def load_local_model_config(model_key: str | None = None) -> LocalModelConfig:
         n_gpu_layers=gpu_layers,
         max_tokens=max(512, _env_int("LOCDEX_MAX_TOKENS", 8192)),
         temperature=max(0.0, min(2.0, _env_float("LOCDEX_TEMPERATURE", 0.15))),
-        max_agent_steps=max(2, min(30, _env_int("LOCDEX_MAX_AGENT_STEPS", 12))),
+        max_agent_steps=max(2, min(30, _env_int("LOCDEX_MAX_AGENT_STEPS", default_agent_steps))),
     )

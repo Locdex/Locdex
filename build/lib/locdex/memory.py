@@ -4,15 +4,12 @@ import re
 import sqlite3
 import time
 from collections import Counter
+from pathlib import Path
+
+from platformdirs import user_data_dir
 
 
 def _tokens(text: str) -> Counter[str]:
-    """Return a lightweight local token-frequency representation.
-
-    Locdex deliberately avoids a second embedding-model dependency here. This
-    keeps the base package small and prevents semantic memory from silently
-    downloading another model on first use.
-    """
     words = re.findall(r"[A-Za-z_][A-Za-z0-9_]{1,}", text.lower())
     return Counter(words)
 
@@ -25,8 +22,21 @@ def _cosine_like(a: Counter[str], b: Counter[str]) -> float:
     return float(overlap / denom) if denom else 0.0
 
 
-def init_db(path: str = "agent_memory.db"):
-    conn = sqlite3.connect(path)
+def _default_memory_path() -> Path:
+    data_dir = Path(user_data_dir("Locdex", "Locdex"))
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir / "agent_memory.db"
+
+
+def init_db(path: str | None = None):
+    if path == ":memory:":
+        db_path = ":memory:"
+    else:
+        resolved = Path(path) if path is not None else _default_memory_path()
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        db_path = str(resolved)
+
+    conn = sqlite3.connect(db_path)
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS memory (
@@ -45,8 +55,6 @@ def init_db(path: str = "agent_memory.db"):
 
 
 def save_memory(conn, task: str, outcome: str, success: bool):
-    # `embedding` remains in the schema for backward compatibility with older
-    # databases, but v0.1 does not require an embedding model.
     conn.execute(
         "INSERT INTO memory (task, outcome, success, embedding, timestamp) VALUES (?,?,?,?,?)",
         (task, outcome, int(success), None, time.time()),
@@ -56,7 +64,7 @@ def save_memory(conn, task: str, outcome: str, success: bool):
 
 def recall_similar(conn, task: str, k: int = 3) -> list[str]:
     rows = conn.execute(
-        "SELECT id, task, outcome, timestamp, access_count FROM memory"
+        "SELECT id, task, outcome, success, timestamp, access_count FROM memory"
     ).fetchall()
     if not rows:
         return []
@@ -67,8 +75,8 @@ def recall_similar(conn, task: str, k: int = 3) -> list[str]:
     for row in rows:
         row_tokens = _tokens(str(row[1] or ""))
         similarity = _cosine_like(query_tokens, row_tokens)
-        recency_weight = 1 / (1 + (now - float(row[3] or now)) / 86400 / 30)
-        success_bonus = 0.05 if row[2] else 0.0
+        recency_weight = 1 / (1 + (now - float(row[4] or now)) / 86400 / 30)
+        success_bonus = 0.05 if row[3] else 0.0
         score = (similarity * 0.8) + (recency_weight * 0.15) + success_bonus
         scored.append((score, row))
 

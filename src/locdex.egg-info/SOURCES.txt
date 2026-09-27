@@ -24,7 +24,11 @@ src/locdex.egg-info/dependency_links.txt
 src/locdex.egg-info/entry_points.txt
 src/locdex.egg-info/requires.txt
 src/locdex.egg-info/top_level.txt
+tests/test_agent_hardening.py
+tests/test_agent_intent_truthfulness.py
 tests/test_agent_loop_v12.py
+tests/test_agent_permissions_recovery.py
+tests/test_agent_progress.py
 tests/test_agent_tools_v12.py
 tests/test_editor.py
 tests/test_git_permissions_v12.py
@@ -32,11 +36,15 @@ tests/test_memory_lightweight_v18.py
 tests/test_model_manager_v12.py
 tests/test_model_profiles_v13.py
 tests/test_parser.py
+tests/test_repair_tool_retry.py
 tests/test_router.py
 tests/test_router_context_v12.py
 tests/test_runtime_manager_v13.py
 tests/test_safety.py
 tests/test_safety_v12.py
+tests/test_smoke_harness.py
+tests/test_smoke_validation_repair.py
 tests/test_staging_v12.py
 tests/test_telemetry_v14.py
 tests/test_validator.py
+tests/test_verified_mutations.py

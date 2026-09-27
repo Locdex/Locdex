@@ -26,8 +26,9 @@ def _config(steps=10):
 def test_failed_repair_tool_gets_fresh_readback_and_retry(monkeypatch, tmp_path):
     state = {
         "content": "def is_even(n):\\n    pass\\n",
-        "tests": 0,
-        "reads": 0,
+    "tests": 0,
+    "reads": 0,
+    "read_paths": [],
     }
 
     def fake_execute(repo_path, name, args):
@@ -38,6 +39,7 @@ def test_failed_repair_tool_gets_fresh_readback_and_retry(monkeypatch, tmp_path)
 
         if name == "read_file":
             state["reads"] += 1
+            state["read_paths"].append(args["path"])
             if args["path"] == "helpers.py":
                 return {"path": "helpers.py", "content": state["content"]}
             return {
@@ -134,8 +136,10 @@ def test_failed_repair_tool_gets_fresh_readback_and_retry(monkeypatch, tmp_path)
     assert "return n % 2 == 0" in state["content"]
     # bootstrap fail + post-first-edit fail + post-repair pass
     assert state["tests"] == 3
-    # Includes bootstrap reads, successful mutation readbacks, and failed-edit refresh.
-    assert state["reads"] >= 5
+    # Bootstrap reads plus the explicit failed-edit refresh go through execute_tool.
+    assert state["reads"] >= 3
+    # helpers.py is read during bootstrap and refreshed again after the failed repair edit.
+    assert state["read_paths"].count("helpers.py") >= 2
 
 
 def test_repeated_failed_edit_tools_stop_bounded(monkeypatch, tmp_path):

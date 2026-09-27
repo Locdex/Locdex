@@ -637,7 +637,6 @@ def run_agent(
     premature_final_count = 0
     force_edit_next = False
     forced_edit_attempts = 0
-    max_forced_edit_attempts = 2
     unsupported_summary_count = 0
     post_mutation_validation_calls: list[dict[str, Any]] = []
     validation_repair_attempts = 0
@@ -907,8 +906,10 @@ def run_agent(
                         "tool_calls": tool_calls,
                     }
 
-        if tool_name in WORKSPACE_MUTATING_TOOLS and not _mutation_result_changed(result):
-            if requires_change:
+        if ( tool_name in WORKSPACE_MUTATING_TOOLS
+                and not _mutation_result_changed(result)
+                and requires_change
+        ):
                 _append_failed_edit_readback(repo_path, messages, tool_name, tool_args)
                 edit_tool_retry_attempts += 1
 

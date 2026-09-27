@@ -169,11 +169,49 @@ def search_code(repo_path: str, query: str, path: str = ".", limit: int = 50) ->
 def write_file(repo_path: str, path: str, content: str) -> dict[str, Any]:
     if not isinstance(content, str):
         raise ToolError("write_file content must be text.")
+
     target = _safe_resolve(repo_path, path)
     target.parent.mkdir(parents=True, exist_ok=True)
     existed = target.exists()
+
+    previous: str | None = None
+    if existed:
+        if not target.is_file():
+            raise ToolError(f"Path is not a file: {path}")
+        try:
+            previous = target.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise ToolError("Existing file is not UTF-8 text.") from exc
+
+    relative = _relative(repo_path, target)
+    byte_count = len(content.encode("utf-8"))
+
+    if existed and previous == content:
+        return {
+            "ok": True,
+            "changed": False,
+            "path": relative,
+            "created": False,
+            "bytes": byte_count,
+            "reason": "Requested content is identical to the existing file.",
+        }
+
     target.write_text(content, encoding="utf-8")
-    return {"ok": True, "path": _relative(repo_path, target), "created": not existed, "bytes": len(content.encode("utf-8"))}
+    try:
+        readback = target.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ToolError("File write completed but readback verification failed.") from exc
+
+    if readback != content:
+        raise ToolError("File write verification failed: on-disk content does not match requested content.")
+
+    return {
+        "ok": True,
+        "changed": True,
+        "path": relative,
+        "created": not existed,
+        "bytes": byte_count,
+    }
 
 
 def replace_in_file(repo_path: str, path: str, old: str, new: str, count: int = 1) -> dict[str, Any]:
@@ -182,13 +220,31 @@ def replace_in_file(repo_path: str, path: str, old: str, new: str, count: int = 
         raise ToolError(f"File does not exist: {path}")
     if not old:
         raise ToolError("replace_in_file requires a non-empty old string.")
+    if old == new:
+        raise ToolError("replace_in_file old and new text are identical; this would not change the file.")
+
     text = target.read_text(encoding="utf-8")
     occurrences = text.count(old)
     if occurrences == 0:
         raise ToolError("Exact text to replace was not found.")
+
     requested = max(1, min(int(count), occurrences))
-    target.write_text(text.replace(old, new, requested), encoding="utf-8")
-    return {"ok": True, "path": _relative(repo_path, target), "replacements": requested, "remaining_matches": occurrences - requested}
+    updated = text.replace(old, new, requested)
+    if updated == text:
+        raise ToolError("Replacement produced no file-content change.")
+
+    target.write_text(updated, encoding="utf-8")
+    readback = target.read_text(encoding="utf-8")
+    if readback != updated:
+        raise ToolError("Replacement write verification failed: on-disk content does not match expected content.")
+
+    return {
+        "ok": True,
+        "changed": True,
+        "path": _relative(repo_path, target),
+        "replacements": requested,
+        "remaining_matches": occurrences - requested,
+    }
 
 
 def delete_path(repo_path: str, path: str) -> dict[str, Any]:
@@ -199,7 +255,7 @@ def delete_path(repo_path: str, path: str) -> dict[str, Any]:
         target.rmdir()
     else:
         target.unlink()
-    return {"ok": True, "path": path}
+    return {"ok": True, "changed": True, "path": path}
 
 
 def run_command(repo_path: str, argv: list[str], cwd: str = ".", timeout: int = 120) -> dict[str, Any]:
@@ -292,25 +348,45 @@ def git_push(repo_path: str, remote: str = "origin", branch: str | None = None, 
     return {"ok": proc.returncode == 0, "output": (proc.stdout + proc.stderr)[-MAX_TOOL_OUTPUT:]}
 
 
+def _has_python_tests(root: Path) -> bool:
+    for current_root, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS and not d.startswith(".")]
+        if any(name.startswith("test_") and name.endswith(".py") for name in files):
+            return True
+        if any(name.endswith("_test.py") for name in files):
+            return True
+    return False
+
+
 def run_tests(repo_path: str) -> dict[str, Any]:
-    candidates = [
-        (["python", "-m", "pytest", "-q"], Path(repo_path) / "pytest.ini"),
-        (["python", "-m", "pytest", "-q"], Path(repo_path) / "pyproject.toml"),
-        (["npm", "test", "--", "--runInBand"], Path(repo_path) / "package.json"),
-        (["go", "test", "./..."], Path(repo_path) / "go.mod"),
-    ]
-    for argv, marker in candidates:
-        if marker.exists():
-            return run_command(repo_path, argv, timeout=180)
-    return {"ok": False, "returncode": None, "output": "No supported test runner was detected automatically."}
+    root = Path(repo_path)
+    if (
+        (root / "pytest.ini").exists()
+        or (root / "pyproject.toml").exists()
+        or (root / "setup.cfg").exists()
+        or _has_python_tests(root)
+    ):
+        return run_command(repo_path, ["python", "-m", "pytest", "-q"], timeout=180)
+
+    if (root / "package.json").exists():
+        return run_command(repo_path, ["npm", "test", "--", "--runInBand"], timeout=180)
+
+    if (root / "go.mod").exists():
+        return run_command(repo_path, ["go", "test", "./..."], timeout=180)
+
+    return {
+        "ok": False,
+        "returncode": None,
+        "output": "No supported test runner was detected automatically.",
+    }
 
 
 TOOL_DESCRIPTIONS = {
     "list_files": "List workspace code/text files. args: path?, limit?.",
     "read_file": "Read a UTF-8 workspace file with line numbers. args: path, start_line?, end_line?.",
     "search_code": "Literal case-insensitive workspace search. args: query, path?, limit?.",
-    "write_file": "Create or replace a text file in the workspace immediately. args: path, content.",
-    "replace_in_file": "Replace exact text in an existing file. args: path, old, new, count?.",
+    "write_file": "Create or replace a text file and verify the on-disk content. args: path, content.",
+    "replace_in_file": "Replace exact text in an existing file and verify the on-disk result. args: path, old, new, count?.",
     "delete_path": "Delete a file or an empty directory in the workspace. args: path.",
     "run_command": "Run an argv command in the workspace. args: argv (list of strings), cwd?, timeout?. No shell expansion.",
     "run_tests": "Run the detected test suite in the current working tree. args: none.",
@@ -343,7 +419,13 @@ def execute_tool(repo_path: str, name: str, args: dict[str, Any] | None) -> dict
         for required in ("path", "old", "new"):
             if required not in args:
                 raise ToolError(f"replace_in_file requires {required}")
-        return replace_in_file(repo_path, str(args["path"]), str(args["old"]), str(args["new"]), int(args.get("count", 1)))
+        return replace_in_file(
+            repo_path,
+            str(args["path"]),
+            str(args["old"]),
+            str(args["new"]),
+            int(args.get("count", 1)),
+        )
     if name == "delete_path":
         if "path" not in args:
             raise ToolError("delete_path requires path")
