@@ -5,16 +5,49 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "locdex"
 version = "1.3.0"
-description = "A local-first agentic coding CLI with hardware-aware GGUF inference, direct workspace editing, routing and Git tools."
+description = "A local-first AI coding agent with direct workspace editing, hardware-aware local inference, guarded Git tools, and optional cloud fallback."
 readme = "README.md"
+requires-python = ">=3.10,<3.13"
+license = { text = "MIT" }
+
 authors = [
     { name = "Emmanuel Amoo", email = "amooemma10@gmail.com" },
     { name = "Gideon Amoo", email = "amooademola55@gmail.com" },
 ]
+
 maintainers = [
     { name = "Enoch Amoo", email = "amooadeyinka887@gmail.com" },
 ]
-requires-python = ">=3.10,<3.13"
+
+keywords = [
+    "ai",
+    "coding-agent",
+    "local-ai",
+    "developer-tools",
+    "llm",
+    "cli",
+    "code-generation",
+    "qwen",
+    "gguf",
+    "llama-cpp",
+]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
 dependencies = [
     "requests>=2.32",
     "huggingface-hub>=0.30",
@@ -32,6 +65,12 @@ dev = [
 
 [project.scripts]
 locdex = "locdex.main:cli"
+
+[project.urls]
+Homepage = "https://github.com/Locdex/Locdex"
+Repository = "https://github.com/Locdex/Locdex"
+Issues = "https://github.com/Locdex/Locdex/issues"
+Changelog = "https://github.com/Locdex/Locdex/releases"
 
 [tool.setuptools.packages.find]
 where = ["src"]
