@@ -1,4 +1,4 @@
-from src.locdex import router
+from locdex import router
 
 
 def test_router_passes_context_as_context(monkeypatch, tmp_path):

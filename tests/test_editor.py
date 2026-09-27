@@ -1,7 +1,7 @@
 import os
 import tempfile
 
-from src.locdex.editor import extract_skeleton
+from locdex.editor import extract_skeleton
 
 
 def test_extract_skeleton():

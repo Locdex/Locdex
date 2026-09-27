@@ -1,4 +1,4 @@
-from src.locdex.agent import _git_tool_allowed
+from locdex.agent import _git_tool_allowed
 
 
 def test_git_operations_require_explicit_user_intent():

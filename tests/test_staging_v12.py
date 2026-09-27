@@ -1,5 +1,5 @@
 
-from src.locdex.validator import _copy_workspace, _stage_candidates
+from locdex.validator import _copy_workspace, _stage_candidates
 
 
 def test_candidate_is_written_only_to_staging_copy(tmp_path):

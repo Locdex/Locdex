@@ -1,6 +1,6 @@
 import sys
 
-from src.locdex.validator import full_validation, run_sandboxed
+from locdex.validator import full_validation, run_sandboxed
 
 
 def test_run_sandboxed_success():

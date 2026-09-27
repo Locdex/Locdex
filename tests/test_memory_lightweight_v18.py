@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.locdex.memory import init_db, recall_similar, save_memory
+from locdex.memory import init_db, recall_similar, save_memory
 
 
 def test_memory_requires_no_embedding_model(tmp_path):

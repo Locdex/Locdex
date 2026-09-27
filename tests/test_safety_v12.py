@@ -1,4 +1,4 @@
-from src.locdex.safety import check_ast_security, is_protected_path, is_safe_path
+from locdex.safety import check_ast_security, is_protected_path, is_safe_path
 
 
 def test_normal_os_and_requests_imports_are_not_blocked():

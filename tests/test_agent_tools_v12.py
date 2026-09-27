@@ -1,6 +1,6 @@
 import pytest
 
-from src.locdex.agent_tools import (
+from locdex.agent_tools import (
     ToolError,
     list_files,
     read_file,

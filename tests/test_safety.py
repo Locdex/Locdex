@@ -1,4 +1,4 @@
-from src.locdex.safety import is_protected_path, is_safe_path  # UPDATE IMPORT AT THE TOP
+from locdex.safety import is_protected_path, is_safe_path  # UPDATE IMPORT AT THE TOP
 
 # ... (keep all your existing ast security tests here) ...
 
