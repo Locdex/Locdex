@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import re
 import shlex
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +62,34 @@ _TEST_COMMAND_MARKERS = {
 SMALL_REPO_MAX_FILES = 8
 SMALL_REPO_MAX_TOTAL_BYTES = 64 * 1024
 
+_DIRECT_EDIT_PATTERN = re.compile(
+    r"(?:^|[,.;!?]\s+|\band\s+)"
+    r"(?:(?:now|just|please)\b[\s,]*)*"
+    r"(?:(?:can|could|would|will)\s+you\s+|"
+    r"i\s+(?:need|want)\s+you\s+to\s+)?"
+    r"(?:(?:now|just|please)\b[\s,]*)*"
+    r"(?:fix|correct|change|edit|modify|update|implement|add|remove|delete|"
+    r"create|write|refactor|rename)\b",
+    re.IGNORECASE,
+)
+_DELETE_PATH_PATTERN = re.compile(
+    r"\b(?:delete|remove)\s+(?:the\s+)?"
+    r"(?:(?:file|folder|directory|path)\b|[\w./\\-]+\.[A-Za-z0-9]{1,12}\b)",
+    re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True)
+class TaskPermission:
+    can_edit: bool
+    can_delete_path: bool
+
+    @property
+    def label(self) -> str:
+        if self.can_edit:
+            return "edit"
+        return "read-only"
+
 
 def _git_tool_allowed(task: str, tool_name: str) -> bool:
     text = task.lower()
@@ -75,8 +105,52 @@ def _git_tool_allowed(task: str, tool_name: str) -> bool:
 
 
 def _task_requires_workspace_change(task: str) -> bool:
-    text = task.lower()
-    return any(keyword in text for keyword in _CHANGE_KEYWORDS)
+    return _DIRECT_EDIT_PATTERN.search(task.strip()) is not None
+
+
+def _task_authorizes_delete_path(task: str) -> bool:
+    return _DELETE_PATH_PATTERN.search(task) is not None
+
+
+def _task_permission(task: str) -> TaskPermission:
+    can_edit = _task_requires_workspace_change(task)
+    return TaskPermission(
+        can_edit=can_edit,
+        can_delete_path=can_edit and _task_authorizes_delete_path(task),
+    )
+
+
+def _print_permission(permission: TaskPermission) -> None:
+    if permission.can_edit:
+        print("[Permission] Task authorizes scoped workspace edits.")
+    else:
+        print("[Permission] Read-only task: workspace mutations are blocked.")
+
+
+_MUTATION_CLAIM_PATTERN = re.compile(
+    r"\b(?:changed|fixed|updated|edited|modified|created|wrote|written|"
+    r"removed|deleted|renamed|refactored|implemented|added)\b",
+    re.IGNORECASE,
+)
+
+_NO_MUTATION_PHRASES = (
+    "no changes were made",
+    "no change was made",
+    "nothing was changed",
+    "did not change",
+    "didn't change",
+    "has not been changed",
+    "have not been changed",
+    "without changing",
+    "left unchanged",
+)
+
+
+def _summary_claims_workspace_change(summary: str) -> bool:
+    lowered = summary.lower()
+    if any(phrase in lowered for phrase in _NO_MUTATION_PHRASES):
+        return False
+    return _MUTATION_CLAIM_PATTERN.search(summary) is not None
 
 
 def _task_requests_validation(task: str) -> bool:
@@ -84,12 +158,21 @@ def _task_requests_validation(task: str) -> bool:
     return any(keyword in text for keyword in _VALIDATION_KEYWORDS)
 
 
+def _mutation_result_changed(result: Any) -> bool:
+    if not isinstance(result, dict) or result.get("ok") is not True:
+        return False
+    # Real Locdex mutation tools now report `changed`. Keep compatibility with
+    # older/fake test tools that only report ok=True.
+    if "changed" in result:
+        return result.get("changed") is True
+    return True
+
+
 def _successful_workspace_mutation(tool_calls: list[dict[str, Any]]) -> bool:
     for call in tool_calls:
         if call.get("tool") not in WORKSPACE_MUTATING_TOOLS:
             continue
-        result = call.get("result")
-        if isinstance(result, dict) and result.get("ok") is True:
+        if _mutation_result_changed(call.get("result")):
             return True
     return False
 
@@ -152,10 +235,45 @@ def _last_successful_mutation_index(tool_calls: list[dict[str, Any]]) -> int | N
     for index, call in enumerate(tool_calls):
         if call.get("tool") not in WORKSPACE_MUTATING_TOOLS:
             continue
-        result = call.get("result")
-        if isinstance(result, dict) and result.get("ok") is True:
+        if _mutation_result_changed(call.get("result")):
             last_index = index
     return last_index
+
+
+def _permission_error(permission: TaskPermission, tool_name: str) -> str | None:
+    if tool_name in {"write_file", "replace_in_file"} and not permission.can_edit:
+        return (
+            f"{tool_name} blocked: the current task is read-only. "
+            "Ask the user to explicitly request a fix/change/edit before mutating files."
+        )
+    if tool_name == "delete_path" and not permission.can_delete_path:
+        return (
+            "delete_path blocked: deleting a file/folder requires an explicit deletion "
+            "instruction in the current user request."
+        )
+    return None
+
+
+def _edit_tool_response_schema(permission: TaskPermission, task: str) -> dict[str, Any]:
+    text = task.lower()
+    creating_file = bool(re.search(r"\bcreate\b|\bnew\s+file\b", text))
+    # Recovery mode favors the least-destructive tool. Existing-file fixes,
+    # changes and refactors should use exact replacement rather than rewriting
+    # the whole file. Whole-file write remains available for explicit creation.
+    tools = ["write_file"] if creating_file else ["replace_in_file"]
+    if permission.can_delete_path:
+        tools.append("delete_path")
+    return {
+        "type": "object",
+        "properties": {
+            "action": {"type": "string", "enum": ["tool"]},
+            "tool": {"type": "string", "enum": tools},
+            "args": {"type": "object"},
+            "summary": {"type": "string"},
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        },
+        "required": ["action", "tool", "args"],
+    }
 
 
 def _progress_message(tool_name: str, args: dict[str, Any]) -> str:
@@ -202,7 +320,10 @@ def _print_tool_result(tool_name: str, result: dict[str, Any]) -> None:
 
     if tool_name in {"write_file", "replace_in_file", "delete_path"} and result.get("ok") is True:
         path = result.get("path")
-        print(f"[Agent] ✓ Updated {path or 'workspace'}.")
+        if result.get("changed") is False:
+            print(f"[Agent] ✗ No workspace change occurred in {path or 'target'}.")
+        else:
+            print(f"[Agent] ✓ Updated {path or 'workspace'}.")
         return
 
     if tool_name in {"run_tests", "run_command"}:
@@ -221,11 +342,15 @@ def _print_tool_result(tool_name: str, result: dict[str, Any]) -> None:
 def _run_tool(
     repo_path: str,
     task: str,
+    permission: TaskPermission,
     tool_name: str,
     tool_args: dict[str, Any],
 ) -> dict[str, Any]:
     print(_progress_message(tool_name, tool_args))
     try:
+        permission_error = _permission_error(permission, tool_name)
+        if permission_error is not None:
+            raise ToolError(permission_error)
         if tool_name in MUTATING_GIT_TOOLS and not _git_tool_allowed(task, tool_name):
             raise ToolError(
                 f"{tool_name} requires an explicit Git instruction from the user in the current request."
@@ -249,6 +374,72 @@ def _append_tool_result(
         {
             "role": "user",
             "content": f"TOOL RESULT for {tool_name}:\n{json.dumps(result, ensure_ascii=False)[:24000]}",
+        }
+    )
+
+
+def _append_mutation_readback(
+    repo_path: str,
+    messages: list[dict[str, str]],
+    tool_name: str,
+    result: dict[str, Any],
+) -> None:
+    if tool_name not in {"write_file", "replace_in_file"} or not _mutation_result_changed(result):
+        return
+    path = result.get("path")
+    if not isinstance(path, str) or not path:
+        return
+
+    print(f"[Agent] Verifying written content in {path}...")
+    try:
+        readback = execute_tool(
+            repo_path,
+            "read_file",
+            {"path": path, "start_line": 1, "end_line": 400},
+        )
+    except Exception as exc:  # noqa: BLE001
+        readback = {"error": f"Post-write readback failed: {exc}"}
+
+    messages.append(
+        {
+            "role": "user",
+            "content": (
+                f"POST-MUTATION READBACK for {path}:\n"
+                f"{json.dumps(readback, ensure_ascii=False)[:24000]}"
+            ),
+        }
+    )
+
+
+def _append_failed_edit_readback(
+    repo_path: str,
+    messages: list[dict[str, str]],
+    tool_name: str,
+    tool_args: dict[str, Any],
+) -> None:
+    if tool_name not in {"write_file", "replace_in_file"}:
+        return
+    path = tool_args.get("path")
+    if not isinstance(path, str) or not path:
+        return
+
+    print(f"[Agent] Refreshing {path} after failed edit attempt...")
+    try:
+        readback = execute_tool(
+            repo_path,
+            "read_file",
+            {"path": path, "start_line": 1, "end_line": 400},
+        )
+    except Exception as exc:  # noqa: BLE001
+        readback = {"error": f"Recovery readback failed: {exc}"}
+
+    messages.append(
+        {
+            "role": "user",
+            "content": (
+                f"CURRENT FILE STATE after failed edit attempt for {path}:\n"
+                f"{json.dumps(readback, ensure_ascii=False)[:24000]}"
+            ),
         }
     )
 
@@ -284,6 +475,7 @@ def _small_repo_paths(repo_path: str, files: list[str]) -> list[str]:
 def _bootstrap_context(
     task: str,
     repo_path: str,
+    permission: TaskPermission,
     messages: list[dict[str, str]],
     bootstrap_calls: list[dict[str, Any]],
     requests_validation: bool,
@@ -295,7 +487,7 @@ def _bootstrap_context(
     print("[Agent] Preparing workspace evidence...")
 
     list_args: dict[str, Any] = {"path": ".", "limit": 200}
-    list_result = _run_tool(repo_path, task, "list_files", list_args)
+    list_result = _run_tool(repo_path, task, permission, "list_files", list_args)
     bootstrap_calls.append({"tool": "list_files", "args": list_args, "result": list_result})
     _append_tool_result(messages, "list_files", list_result)
 
@@ -306,13 +498,13 @@ def _bootstrap_context(
         print(f"[Agent] Small workspace detected ({len(small_paths)} files); pre-reading project...")
         for path in small_paths:
             read_args: dict[str, Any] = {"path": path, "start_line": 1, "end_line": 400}
-            read_result = _run_tool(repo_path, task, "read_file", read_args)
+            read_result = _run_tool(repo_path, task, permission, "read_file", read_args)
             bootstrap_calls.append({"tool": "read_file", "args": read_args, "result": read_result})
             _append_tool_result(messages, "read_file", read_result)
 
     if requests_validation:
         test_args: dict[str, Any] = {}
-        test_result = _run_tool(repo_path, task, "run_tests", test_args)
+        test_result = _run_tool(repo_path, task, permission, "run_tests", test_args)
         bootstrap_calls.append({"tool": "run_tests", "args": test_args, "result": test_result})
         _append_tool_result(messages, "run_tests", test_result)
 
@@ -394,14 +586,15 @@ Operating rules:
 1. Inspect relevant files before editing. Never claim you inspected something you did not read/search.
 2. For code tasks, use write_file or replace_in_file to make the requested changes directly in the workspace.
 3. After editing, run the most relevant tests/checks you can reasonably detect. Use git_diff/status to inspect your work when useful.
-4. Do NOT call git_add, git_commit, git_pull, or git_push unless the user's current request explicitly asks for that Git operation.
-5. Never access paths outside the workspace. Do not try to read .git internals, virtualenvs, caches, credentials, or secrets.
-6. Prefer argv-style run_command calls. Do not invoke privilege escalation or machine power/admin commands.
-7. Keep edits scoped to the request. Do not rewrite unrelated files.
-8. Never escalate before using the available workspace evidence and attempting a concrete local solution.
-9. If the task truly exceeds the local model after inspection and an attempted solution, return action='escalate' with a concise reason.
-10. When finished, return action='final' with a concise summary of what you changed, tests/checks run, and any relevant caveat.
-11. A final answer is accepted only when tool evidence supports it. For edit/fix tasks, a successful workspace mutation must have occurred. If the user explicitly requested tests/checks, Locdex must observe the requested validation before accepting completion.
+4. Workspace mutation is permission-scoped. write_file/replace_in_file are allowed only when the current user request explicitly asks for a change. delete_path additionally requires an explicit file/folder deletion instruction.
+5. Do NOT call git_add, git_commit, git_pull, or git_push unless the user's current request explicitly asks for that Git operation.
+6. Never access paths outside the workspace. Do not try to read .git internals, virtualenvs, caches, credentials, or secrets.
+7. Prefer argv-style run_command calls. Do not invoke privilege escalation or machine power/admin commands.
+8. Keep edits scoped to the request. Do not rewrite unrelated files.
+9. Never escalate before using the available workspace evidence and attempting a concrete local solution.
+10. If the task truly exceeds the local model after inspection and an attempted solution, return action='escalate' with a concise reason.
+11. When finished, return action='final' with a concise summary of what you changed, tests/checks run, and any relevant caveat.
+12. A final answer is accepted only when tool evidence supports it. For edit/fix tasks, a successful workspace mutation must have occurred. If the user explicitly requested tests/checks, Locdex must observe the requested validation before accepting completion.
 
 WORKSPACE CONTEXT:
 {extra_context}
@@ -425,28 +618,80 @@ def run_agent(
     tool_calls: list[dict[str, Any]] = []
     bootstrap_calls: list[dict[str, Any]] = []
 
-    requires_change = _task_requires_workspace_change(task)
+    permission = _task_permission(task)
+    _print_permission(permission)
+    requires_change = permission.can_edit
     requests_validation = _task_requests_validation(task)
-    small_repo = _bootstrap_context(task, repo_path, messages, bootstrap_calls, requests_validation)
+    small_repo = _bootstrap_context(
+        task,
+        repo_path,
+        permission,
+        messages,
+        bootstrap_calls,
+        requests_validation,
+    )
 
     # One early escalation is treated as a weak-model planning failure rather than
     # proof that the task truly requires cloud fallback.
     escalation_deferrals_remaining = 1 if requires_change else 0
+    premature_final_count = 0
+    force_edit_next = False
+    forced_edit_attempts = 0
+    max_forced_edit_attempts = 2
+    unsupported_summary_count = 0
+    post_mutation_validation_calls: list[dict[str, Any]] = []
+    validation_repair_attempts = 0
+    max_validation_repair_attempts = 2
+    edit_tool_retry_attempts = 0
+    max_edit_tool_retry_attempts = 2
+    smoke_mode = getattr(config, "model_key", "") == "smoke"
 
     for step in range(1, config.max_agent_steps + 1):
-        print(f"[Agent] Step {step}/{config.max_agent_steps}: planning next action...")
-        decision = runtime.json_completion(messages, AGENT_RESPONSE_SCHEMA)
+        forced_edit_mode = force_edit_next
+        if forced_edit_mode:
+            forced_edit_attempts += 1
+            print(f"[Agent] Step {step}/{config.max_agent_steps}: protocol recovery requires an edit tool...")
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "PROTOCOL RECOVERY: previous answers claimed completion without making the "
+                        "authorized workspace change. Your next response MUST use the edit tool "
+                        "permitted by the provided schema. For an existing file, make the smallest "
+                        "exact replacement that actually changes the requested text. Do not return "
+                        "final or escalate in this response."
+                    ),
+                }
+            )
+            schema = _edit_tool_response_schema(permission, task)
+            force_edit_next = False
+        else:
+            print(f"[Agent] Step {step}/{config.max_agent_steps}: planning next action...")
+            schema = AGENT_RESPONSE_SCHEMA
+
+        decision = runtime.json_completion(messages, schema)
         record_usage("local")
         action = decision.get("action")
+
+        if forced_edit_mode and action != "tool":
+            print("[Agent] Protocol recovery failed: local model still did not request an edit tool.")
+            return {
+                "status": "incomplete",
+                "confidence": 0.0,
+                "summary": (
+                    "Local model could not follow the required edit-tool protocol after repeated "
+                    "unsupported completion attempts."
+                ),
+                "steps": step,
+                "tool_calls": tool_calls,
+            }
 
         if action == "final":
             mutated = _successful_workspace_mutation(tool_calls)
 
             if requires_change and mutated:
-                last_mutation = _last_successful_mutation_index(tool_calls)
-                post_mutation_calls = tool_calls[(last_mutation + 1):] if last_mutation is not None else []
                 validation_attempted, validation_passed, validation_unavailable = _validation_state(
-                    post_mutation_calls
+                    post_mutation_validation_calls
                 )
             else:
                 validation_attempted, validation_passed, validation_unavailable = _validation_state(
@@ -454,12 +699,35 @@ def run_agent(
                 )
 
             if requires_change and not mutated:
-                _append_premature_final_feedback(
-                    messages,
-                    decision,
-                    "the request requires a workspace change, but no successful write/edit/delete tool has run.",
-                )
-                continue
+                premature_final_count += 1
+                if premature_final_count == 1:
+                    _append_premature_final_feedback(
+                        messages,
+                        decision,
+                        "the request requires a workspace change, but no successful write/edit/delete tool has run.",
+                    )
+                    continue
+
+                if premature_final_count == 2:
+                    print(
+                        "[Agent] Repeated unsupported completion; the next generation will be "
+                        "constrained to an authorized edit tool."
+                    )
+                    messages.append({"role": "assistant", "content": json.dumps(decision, ensure_ascii=False)})
+                    force_edit_next = True
+                    continue
+
+                print("[Agent] Local model repeatedly claimed completion without performing the authorized edit.")
+                return {
+                    "status": "incomplete",
+                    "confidence": 0.0,
+                    "summary": (
+                        "Local model repeatedly claimed completion without performing the "
+                        "authorized workspace edit."
+                    ),
+                    "steps": step,
+                    "tool_calls": tool_calls,
+                }
 
             if requests_validation and not validation_attempted:
                 _append_premature_final_feedback(
@@ -470,18 +738,77 @@ def run_agent(
                 continue
 
             if requests_validation and validation_attempted and not (validation_passed or validation_unavailable):
-                _append_premature_final_feedback(
-                    messages,
-                    decision,
-                    "the requested validation has not passed yet.",
-                )
-                continue
+                if requires_change and validation_repair_attempts < max_validation_repair_attempts:
+                    validation_repair_attempts += 1
+                    print(
+                        "[Agent] Validation failed after the edit; the next generation will be "
+                        "constrained to a repair edit."
+                    )
+                    messages.append(
+                        {"role": "assistant", "content": json.dumps(decision, ensure_ascii=False)}
+                    )
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "The latest validation failed after the workspace edit. Use the "
+                                "failure output already in context and make a concrete repair. "
+                                "Your next response must use the permitted edit tool."
+                            ),
+                        }
+                    )
+                    force_edit_next = True
+                    continue
+
+                return {
+                    "status": "incomplete",
+                    "confidence": 0.0,
+                    "summary": (
+                        "Validation still failed after the allowed local repair attempts."
+                    ),
+                    "steps": step,
+                    "tool_calls": tool_calls,
+                }
+
+            summary = str(decision.get("summary", "Task completed."))
+            if not mutated and _summary_claims_workspace_change(summary):
+                unsupported_summary_count += 1
+                if unsupported_summary_count == 1:
+                    print(
+                        "[Agent] Final claim rejected: the model described a workspace change "
+                        "without mutation evidence."
+                    )
+                    messages.append(
+                        {"role": "assistant", "content": json.dumps(decision, ensure_ascii=False)}
+                    )
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "EVIDENCE CORRECTION: no workspace mutation occurred in this task. "
+                                "Answer using only the observed file/tool evidence. Do not say that "
+                                "anything was changed, fixed, updated, created, removed, or edited."
+                            ),
+                        }
+                    )
+                    continue
+
+                print("[Agent] Local model repeated an unsupported workspace-change claim.")
+                return {
+                    "status": "incomplete",
+                    "confidence": 0.0,
+                    "summary": (
+                        "Local model repeatedly claimed a workspace change without mutation evidence."
+                    ),
+                    "steps": step,
+                    "tool_calls": tool_calls,
+                }
 
             print("[Agent] ✓ Task evidence satisfied.")
             return {
                 "status": "completed",
                 "confidence": float(decision.get("confidence", 0.85)),
-                "summary": str(decision.get("summary", "Task completed.")),
+                "summary": summary,
                 "steps": step,
                 "tool_calls": tool_calls,
             }
@@ -515,11 +842,107 @@ def run_agent(
 
         tool_name = str(decision.get("tool", ""))
         tool_args = decision.get("args") if isinstance(decision.get("args"), dict) else {}
-        result = _run_tool(repo_path, task, tool_name, tool_args)
+        result = _run_tool(repo_path, task, permission, tool_name, tool_args)
 
         tool_calls.append({"tool": tool_name, "args": tool_args, "result": result})
         messages.append({"role": "assistant", "content": json.dumps(decision, ensure_ascii=False)})
         _append_tool_result(messages, tool_name, result)
+        _append_mutation_readback(repo_path, messages, tool_name, result)
+
+        if _looks_like_validation_call(tool_calls[-1]):
+            post_mutation_validation_calls.append(tool_calls[-1])
+
+        if tool_name in WORKSPACE_MUTATING_TOOLS and _mutation_result_changed(result):
+            # A real mutation succeeded, so tool-level recovery starts fresh.
+            edit_tool_retry_attempts = 0
+            # Any validation from before this mutation is stale.
+            post_mutation_validation_calls = []
+
+            if smoke_mode and requests_validation:
+                print("[Agent] Running requested validation after the edit...")
+                validation_args: dict[str, Any] = {}
+                validation_result = _run_tool(
+                    repo_path,
+                    task,
+                    permission,
+                    "run_tests",
+                    validation_args,
+                )
+                validation_call = {
+                    "tool": "run_tests",
+                    "args": validation_args,
+                    "result": validation_result,
+                }
+                post_mutation_validation_calls.append(validation_call)
+                _append_tool_result(messages, "run_tests", validation_result)
+
+                attempted, passed, unavailable = _validation_state(post_mutation_validation_calls)
+                if attempted and not (passed or unavailable):
+                    if validation_repair_attempts < max_validation_repair_attempts:
+                        validation_repair_attempts += 1
+                        print(
+                            "[Agent] Validation still failing; the next generation will be "
+                            "constrained to a repair edit."
+                        )
+                        messages.append(
+                            {
+                                "role": "user",
+                                "content": (
+                                    "POST-EDIT VALIDATION FAILED. Use the failure output above to "
+                                    "repair the implementation. Your next response must use the "
+                                    "permitted edit tool and make a real workspace change."
+                                ),
+                            }
+                        )
+                        force_edit_next = True
+                        continue
+
+                    return {
+                        "status": "incomplete",
+                        "confidence": 0.0,
+                        "summary": (
+                            "Validation still failed after the allowed local repair attempts."
+                        ),
+                        "steps": step,
+                        "tool_calls": tool_calls,
+                    }
+
+        if tool_name in WORKSPACE_MUTATING_TOOLS and not _mutation_result_changed(result):
+            if requires_change:
+                _append_failed_edit_readback(repo_path, messages, tool_name, tool_args)
+                edit_tool_retry_attempts += 1
+
+                if edit_tool_retry_attempts <= max_edit_tool_retry_attempts:
+                    print(
+                        "[Agent] Edit tool failed or made no change; retrying constrained edit "
+                        f"({edit_tool_retry_attempts}/{max_edit_tool_retry_attempts})..."
+                    )
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "The previous edit tool call failed or made no file-content change. "
+                                "Use the tool error and refreshed CURRENT FILE STATE above. Make a "
+                                "different concrete edit: the replacement old/new text must differ, "
+                                "the old text must match the current file exactly, and the new text "
+                                "must address the latest validation failure. Your next response must "
+                                "use the permitted edit tool."
+                            ),
+                        }
+                    )
+                    force_edit_next = True
+                    continue
+
+                return {
+                    "status": "incomplete",
+                    "confidence": 0.0,
+                    "summary": (
+                        "The local model could not produce a verified workspace change after "
+                        "the allowed edit-tool recovery attempts."
+                    ),
+                    "steps": step,
+                    "tool_calls": tool_calls,
+                }
 
     print(f"[Agent] Step budget exhausted after {config.max_agent_steps} local generations.")
     return {

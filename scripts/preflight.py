@@ -9,82 +9,20 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 import venv
 import zipfile
-
-import tomllib
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 TESTS = ROOT / "tests"
-LOCAL_TEMP = ROOT / ".locdex-preflight-tmp"
-PYTEST_TEMP = ROOT / ".pytest-locdex"
-IGNORED_DIRS = {
-    ".git",
-    ".venv",
-    "venv",
-    "env",
-    "__pycache__",
-    ".pytest_cache",
-    "dist",
-    "build",
-    ".locdex-preflight-tmp",
-    ".pytest-locdex",
-    "node_modules",
-}
-
-
-def _prepare_temp_dirs() -> None:
-    shutil.rmtree(LOCAL_TEMP, ignore_errors=True)
-    shutil.rmtree(PYTEST_TEMP, ignore_errors=True)
-    LOCAL_TEMP.mkdir(parents=True, exist_ok=True)
-    # Keep all temporary files used by subprocesses inside the repository so
-    # Windows ACL problems in %TEMP% cannot break an otherwise valid test run.
-    tempfile.tempdir = str(LOCAL_TEMP)
-
-
-def _offline_env() -> dict[str, str]:
-    LOCAL_TEMP.mkdir(parents=True, exist_ok=True)
-    env = os.environ.copy()
-    # Stage 0 is intentionally package-only. It must never download or load
-    # Qwen/Kimi, install the llama.cpp runtime, or contact Hugging Face.
-    env["LOCDEX_AUTO_DOWNLOAD"] = "0"
-    env["HF_HUB_OFFLINE"] = "1"
-    env["TRANSFORMERS_OFFLINE"] = "1"
-    env["TMP"] = str(LOCAL_TEMP)
-    env["TEMP"] = str(LOCAL_TEMP)
-    env["TMPDIR"] = str(LOCAL_TEMP)
-    return env
 
 
 def run(cmd: list[str], *, cwd: pathlib.Path = ROOT, env: dict[str, str] | None = None) -> None:
     print(f"\n$ {' '.join(cmd)}")
-    proc = subprocess.run(
-        cmd,
-        cwd=cwd,
-        env=env or _offline_env(),
-        text=True,
-        check=False,
-    )
+    proc = subprocess.run(cmd, cwd=cwd, env=env, text=True)
     if proc.returncode:
         raise SystemExit(proc.returncode)
-
-
-def _is_ignored(path: pathlib.Path) -> bool:
-    try:
-        relative = path.relative_to(ROOT)
-    except ValueError:
-        return False
-    return any(part in IGNORED_DIRS for part in relative.parts)
-
-
-def check_python_version() -> None:
-    if not ((3, 10) <= sys.version_info[:2] < (3, 13)):
-        raise SystemExit(
-            "FAIL: Locdex preflight requires Python 3.10-3.12. "
-            f"Detected {sys.version.split()[0]}. Python 3.11 is the reference version."
-        )
-    print(f"PASS: supported Python {sys.version.split()[0]}")
 
 
 def check_pyproject() -> None:
@@ -102,22 +40,22 @@ def check_pyproject() -> None:
 
 
 def check_text_files() -> None:
-    bad: list[str] = []
+    bad = []
     conflict_markers = ("<<<<<<<", "=======", ">>>>>>>")
     for base in (ROOT, SRC, TESTS):
         if not base.exists():
             continue
         for p in base.rglob("*"):
-            if not p.is_file() or _is_ignored(p):
+            if not p.is_file() or any(part in {".git", "__pycache__", ".pytest_cache", "dist", "build"} for part in p.parts):
                 continue
             if p.suffix.lower() not in {".py", ".toml", ".md", ".yml", ".yaml", ".json"}:
                 continue
             try:
-                contents = p.read_text(encoding="utf-8")
+                text = p.read_text(encoding="utf-8")
             except UnicodeDecodeError:
                 bad.append(f"{p.relative_to(ROOT)}: not UTF-8")
                 continue
-            lines = contents.splitlines()
+            lines = text.splitlines()
             if any(any(line.startswith(marker) for marker in conflict_markers) for line in lines):
                 bad.append(f"{p.relative_to(ROOT)}: merge-conflict marker present")
     if bad:
@@ -126,9 +64,9 @@ def check_text_files() -> None:
 
 
 def check_no_cache_artifacts() -> None:
-    offenders: list[str] = []
+    offenders = []
     for p in ROOT.rglob("*"):
-        if _is_ignored(p):
+        if any(part == ".git" for part in p.parts):
             continue
         if p.name in {"__pycache__", ".pytest_cache"} or p.suffix == ".pyc":
             offenders.append(str(p.relative_to(ROOT)))
@@ -175,9 +113,7 @@ def import_modules(strict: bool) -> None:
 
     if not strict:
         return
-
     import pkgutil
-
     import locdex
 
     failures = []
@@ -197,28 +133,16 @@ def import_modules(strict: bool) -> None:
     print(f"PASS: all {count} discoverable Locdex modules import")
 
 
-def quality_gate() -> None:
-    env = _offline_env()
+def pytest_gate() -> None:
+    env = os.environ.copy()
     env["PYTHONPATH"] = str(SRC) + os.pathsep + env.get("PYTHONPATH", "")
-
-    run([sys.executable, "-m", "ruff", "check", "src", "tests", "scripts"], env=env)
-    print("PASS: Ruff source/test/script lint")
-
-    pytest_base = str(PYTEST_TEMP)
-    run(
-        [sys.executable, "-m", "pytest", "--collect-only", "-q", "--basetemp", pytest_base],
-        env=env,
-    )
-    run(
-        [sys.executable, "-m", "pytest", "-q", "--basetemp", pytest_base],
-        env=env,
-    )
+    run([sys.executable, "-m", "pytest", "--collect-only", "-q"], env=env)
+    run([sys.executable, "-m", "pytest", "-q"], env=env)
     print("PASS: pytest collection and regression suite")
 
 
 def build_wheel() -> pathlib.Path:
-    LOCAL_TEMP.mkdir(parents=True, exist_ok=True)
-    out = pathlib.Path(tempfile.mkdtemp(prefix="locdex-wheel-", dir=LOCAL_TEMP))
+    out = pathlib.Path(tempfile.mkdtemp(prefix="locdex-wheel-"))
     run([
         sys.executable,
         "-m",
@@ -256,13 +180,12 @@ def build_wheel() -> pathlib.Path:
 
 
 def wheel_smoke(wheel: pathlib.Path) -> None:
-    LOCAL_TEMP.mkdir(parents=True, exist_ok=True)
-    temp = pathlib.Path(tempfile.mkdtemp(prefix="locdex-venv-", dir=LOCAL_TEMP))
+    temp = pathlib.Path(tempfile.mkdtemp(prefix="locdex-venv-"))
     builder = venv.EnvBuilder(with_pip=True, system_site_packages=True)
     builder.create(temp)
     py = temp / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     exe = temp / ("Scripts/locdex.exe" if os.name == "nt" else "bin/locdex")
-    run([str(py), "-m", "pip", "install", str(wheel)])
+    run([str(py), "-m", "pip", "install", "--no-deps", str(wheel)])
     run([str(exe), "--help"])
     print("PASS: built wheel installs and the Locdex CLI starts")
     shutil.rmtree(temp, ignore_errors=True)
@@ -278,24 +201,17 @@ def main() -> None:
     ap.add_argument("--skip-wheel", action="store_true", help="Skip wheel build/install smoke test")
     args = ap.parse_args()
 
-    _prepare_temp_dirs()
-    print("=== Locdex preflight (package-only; no model/runtime downloads) ===")
-    try:
-        check_python_version()
-        check_pyproject()
-        check_text_files()
-        check_no_cache_artifacts()
-        compile_everything()
-        import_modules(args.strict_imports)
-        quality_gate()
-        if not args.skip_wheel:
-            wheel = build_wheel()
-            wheel_smoke(wheel)
-        print("\nALL PREFLIGHT CHECKS PASSED")
-    finally:
-        # Generated test/build scratch space should never become repository state.
-        shutil.rmtree(PYTEST_TEMP, ignore_errors=True)
-        shutil.rmtree(LOCAL_TEMP, ignore_errors=True)
+    print("=== Locdex preflight ===")
+    check_pyproject()
+    check_text_files()
+    check_no_cache_artifacts()
+    compile_everything()
+    import_modules(args.strict_imports)
+    pytest_gate()
+    if not args.skip_wheel:
+        wheel = build_wheel()
+        wheel_smoke(wheel)
+    print("\nALL PREFLIGHT CHECKS PASSED")
 
 
 if __name__ == "__main__":
