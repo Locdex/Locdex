@@ -22,7 +22,12 @@ maintainers = [
 keywords = [
     "ai",
     "coding-agent",
+    "coding agent",
+    "aider alternative",
+    "cline alternative",
+    "claude code alternative",
     "local-ai",
+    "local llm",
     "developer-tools",
     "llm",
     "cli",
