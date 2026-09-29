@@ -1,79 +1,208 @@
-# Locdex: Local-First Agentic Coding CLI
+# Locdex
 
-Locdex is a local-first coding agent that works directly in the developer's current directory. It can inspect a repository, edit files, run commands and tests, inspect diffs, and perform Git operations when the user explicitly asks. Its differentiators are local-first execution, model routing, cost control, bounded tools, validation, and transparent agent behavior.
+**A local-first AI coding agent that works directly in your repository.**
 
-## v1.3 launch runtime
+Locdex can inspect your codebase, edit files, run commands and tests, inspect diffs, and perform Git operations when you explicitly authorize them.
 
-Locdex no longer requires Ollama and no longer makes `pip install locdex` compile llama.cpp on the user's machine.
+It is built around a simple idea: **routine coding work should be able to run locally without requiring a paid frontier-model API for every task.**
 
-`locdex setup` now:
+When you want more capability, Locdex can optionally use a cloud model that **you configure**.
 
-1. detects the operating system, CPU architecture, system RAM, and available accelerator;
-2. chooses a prebuilt llama-cpp-python runtime for CPU, Apple Metal, NVIDIA CUDA, Linux ROCm, Windows HIP Radeon, or Vulkan where detected;
-3. caches the detected hardware fingerprint and re-detects if the machine changes;
-4. lets the user choose Qwen3-Coder or the optional Kimi-distilled model;
-5. checks available disk space before downloading;
-6. verifies the pinned Qwen model SHA-256;
-7. runs a small-context local inference smoke test before declaring setup complete.
+## Why Locdex?
 
-If automatic GPU model loading fails, Locdex retries once on CPU rather than immediately failing the whole session.
+Most AI coding workflows push developers toward one of two extremes: use a cloud model for everything, or wire a local model into tooling that was primarily designed around frontier models.
 
-## Local model choices
+Locdex is being built local-first.
 
-### Qwen3-Coder — supported default
+It combines:
 
-- Base: `Qwen/Qwen3-Coder-30B-A3B-Instruct`
-- Locdex GGUF: `unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF`
-- Quant: Q4_K_M
-- Download: about 18.6 GB
-- Locdex status: **supported/default**
-- Practical target: 32 GB system RAM; Locdex warns below 24 GB
+- local model execution;
+- hardware-aware runtime setup;
+- direct workspace editing;
+- bounded agent tools;
+- automatic validation and test execution;
+- explicit Git permissions;
+- optional cloud fallback;
+- lightweight local memory;
+- opt-in, aggregate-only telemetry.
 
-### Kimi-distilled 9B — optional/experimental
+**Ollama is not required.**
 
-- Upstream: `khazarai/Qwen3.5-9B-Kimi-k3-Distilled`
-- Locdex GGUF: `mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF`
-- Quant: Q4_K_M
-- Download: about 5.8 GB
-- Locdex status: **experimental**
-- Practical target: 16 GB system RAM
+## Quick Start
 
-Both can be installed at the same time. Only the selected model is loaded for a session.
-
-## Prerequisites
-
-- Python 3.10+; Python 3.10-3.12 currently has the widest upstream prebuilt accelerated-runtime coverage.
-- Git.
-- Qwen: roughly 21 GB free disk including download/cache headroom; 32 GB RAM recommended.
-- Kimi: roughly 8 GB free disk including download/cache headroom; 16 GB RAM recommended.
-- Docker is not used in the current release. Candidate validation uses a disposable staged copy on the host.
-
-Ollama is **not** required.
-
-## Installation
+Install Locdex:
 
 ```bash
-git clone https://github.com/bandojayy/Locdex.git
-cd Locdex
-python -m pip install -e .
+pip install locdex
 ```
 
-Then run the hardware-aware setup:
+Run setup:
 
 ```bash
 locdex setup
 ```
 
-Or choose explicitly:
+Enter a project:
+
+```bash
+cd your-project
+locdex chat
+```
+
+Then give Locdex a task:
+
+```text
+> find the authentication bug and fix it
+```
+
+Locdex can inspect relevant files, make changes, run tests, and inspect the resulting diff.
+
+Git mutations require explicit intent:
+
+```text
+> commit these changes
+```
+
+or:
+
+```text
+> push this branch
+```
+
+Locdex will not decide on its own that your code should be committed or pushed.
+
+## What It Looks Like
+
+```text
+$ locdex chat
+
+> fix the empty-token authentication bug
+
+[agent] searches the repository
+[agent] reads relevant implementation and tests
+[agent] edits the affected files
+[agent] runs tests
+[agent] inspects git diff
+
+✓ Fixed empty-token handling.
+✓ Tests passed.
+
+> commit it
+
+[agent] git status
+[agent] git add ...
+[agent] git commit ...
+
+✓ Committed.
+```
+
+*A short real-world demo GIF/video will be added here.*
+
+## Local Models
+
+Locdex v1.3.1 currently ships with two local model profiles.
+
+### Qwen3-Coder — supported default
+
+- Model: `Qwen/Qwen3-Coder-30B-A3B-Instruct`
+- GGUF: `unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF`
+- Quantization: `Q4_K_M`
+- Approximate download: **18.6 GB**
+- Recommended system RAM: **32 GB**
+- Status: **supported/default**
+
+Install directly:
 
 ```bash
 locdex setup --model qwen
+```
+
+### Kimi-derived 9B — experimental
+
+- Upstream: `khazarai/Qwen3.5-9B-Kimi-k3-Distilled`
+- GGUF: `mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF`
+- Quantization: `Q4_K_M`
+- Approximate download: **5.8 GB**
+- Practical system RAM target: **16 GB**
+- Status: **experimental**
+
+Install directly:
+
+```bash
 locdex setup --model kimi
 ```
 
-`locdex setup` installs a matching prebuilt local inference runtime, downloads the selected GGUF and smoke-tests it.
+Both models can be installed on the same system. Only the selected model is loaded for a session.
 
-## Model management
+## Hardware-Aware Setup
+
+`locdex setup` detects the host machine and attempts to install an appropriate prebuilt local inference runtime.
+
+| Hardware | Typical runtime |
+|---|---|
+| Apple Silicon | Metal |
+| NVIDIA GPU | CUDA |
+| Linux AMD GPU | ROCm |
+| Windows AMD GPU | HIP Radeon when enabled |
+| Linux/Windows with Vulkan | Vulkan fallback |
+| Other systems | CPU |
+
+Locdex deliberately prefers prebuilt binary runtimes instead of silently compiling a local C/C++ runtime during installation.
+
+If GPU model loading fails, Locdex can retry on CPU rather than immediately ending the session.
+
+## Built for Agents, With Boundaries
+
+Locdex gives the model development tools rather than unrestricted Python or shell access.
+
+It can:
+
+- search and read repository files;
+- edit files inside the workspace;
+- delete permitted files and empty directories;
+- run bounded development commands;
+- run tests;
+- inspect Git status and diffs;
+- stage, commit, pull, and push through dedicated Git tools.
+
+It cannot directly escape the repository workspace or manipulate protected `.git` internals.
+
+The general command runner also cannot invoke `git` or `gh` to bypass Locdex's Git permission system.
+
+## Local First. Cloud When You Choose.
+
+Cloud fallback is disabled until you configure it.
+
+Locdex does not force a particular cloud provider or frontier model.
+
+### OpenRouter
+
+```bash
+export LOCDEX_CLOUD_PROVIDER="openrouter"
+export LOCDEX_CLOUD_MODEL="your-selected-provider/model"
+export OPENROUTER_API_KEY="..."
+```
+
+### Anthropic
+
+```bash
+export LOCDEX_CLOUD_PROVIDER="anthropic"
+export LOCDEX_CLOUD_MODEL="your-selected-claude-model"
+export ANTHROPIC_API_KEY="..."
+```
+
+### Any OpenAI-compatible endpoint
+
+```bash
+export LOCDEX_CLOUD_PROVIDER="custom"
+export LOCDEX_CLOUD_MODEL="your-selected-model"
+export LOCDEX_CLOUD_BASE_URL="https://your-provider.example/v1/chat/completions"
+export LOCDEX_CLOUD_API_KEY="..."
+```
+
+The local agent remains first. Cloud escalation uses only providers and models explicitly configured by the user.
+
+## Model Management
 
 ```bash
 locdex model list
@@ -89,9 +218,7 @@ locdex model remove qwen
 locdex model remove kimi
 ```
 
-The selection persists in Locdex's user config. `LOCDEX_MODEL=qwen|kimi` can override it for one process.
-
-## Runtime management
+## Runtime Management
 
 ```bash
 locdex runtime status
@@ -99,108 +226,68 @@ locdex runtime install
 locdex runtime repair
 ```
 
-`runtime repair` forces reinstall of the currently detected prebuilt backend. The installer deliberately uses binary wheels only; it will report an unsupported configuration instead of silently invoking a local C/C++ toolchain.
+## Validation
 
-Typical detected backends:
+Locdex v1.3.1 passed its release gate before publication, including:
 
-- Apple Silicon → Metal
-- supported NVIDIA + CUDA → CUDA wheel matched to the detected driver capability
-- Linux AMD ROCm → ROCm wheel
-- Windows AMD → HIP Radeon when enabled with `LOCDEX_AMD_HIP=1`
-- Linux/Windows with `vulkaninfo` available → Vulkan fallback
-- otherwise → CPU
+- **75 automated regression tests**
+- GitHub Actions CI
+- Ruff static analysis
+- Python compilation checks
+- wheel build
+- clean-environment wheel installation
+- dependency validation
+- CLI launch validation
+- strict release preflight validation
 
-Set `LOCDEX_N_GPU_LAYERS=0` to force CPU or `LOCDEX_N_GPU_LAYERS=<integer>` to override automatic offload.
+Coverage includes agent editing, Git-intent enforcement, model profiles, hardware detection, runtime installation policy, routing, and safety behavior.
 
-## Normal workflow
+Physical-machine testing across more hardware configurations is still ongoing.
 
-```text
-$ locdex chat
-
-> fix the empty-token authentication bug
-[agent] reads relevant files
-[agent] searches tests
-[agent] edits src/auth.py directly
-[agent] runs tests
-[agent] inspects git diff
-✓ Fixed empty-token handling. Tests passed.
-
-> commit it
-[agent] git status
-[agent] git add ...
-[agent] git commit -m "Fix empty-token authentication"
-✓ Committed.
-
-> push this branch
-[agent] git push ...
-✓ Pushed.
-```
-
-There is no mandatory `ship it` ceremony. `ship it` is just a convenience phrase that authorizes staging, committing and pushing when appropriate.
-
-## Agent tools
-
-Locdex exposes bounded tools to the local model instead of unrestricted Python access:
-
-- list/search/read repository files;
-- write or replace text files inside the workspace;
-- delete files or empty directories;
-- execute argv-style development commands with timeouts;
-- run common test suites;
-- inspect Git status and diffs;
-- stage, commit, pull and push through dedicated Git tools.
-
-Direct file access outside the workspace and `.git` internals is blocked. `run_command` cannot invoke `git`/`gh`; Git mutations go through dedicated tools so Locdex can enforce explicit user intent.
-
-## Configuration overrides
+## Install From Source
 
 ```bash
-export LOCDEX_MODEL=qwen                    # or kimi
-export LOCDEX_MODEL_PATH=/absolute/path/model.gguf
-
-export LOCDEX_MODEL_REPO='owner/model-GGUF'
-export LOCDEX_MODEL_PATTERN='*Q4_K_M.gguf'
-export LOCDEX_MODEL_REVISION='commit-or-tag'
-export LOCDEX_MODEL_SHA256='expected_sha256_here'
-
-export LOCDEX_N_CTX=16384
-export LOCDEX_N_THREADS=8
-export LOCDEX_N_GPU_LAYERS=auto             # auto is the default
+git clone https://github.com/Locdex/Locdex.git
+cd Locdex
+python -m pip install -e .
+locdex setup
 ```
 
-## Optional cloud fallback
+## Current Status
 
-Locdex does **not** assume OpenRouter or any other cloud provider/model. Cloud fallback stays disabled until you explicitly configure it.
+Locdex is early.
 
-### OpenRouter
+v1.3.1 establishes the stable baseline for the current architecture. There is substantially more work planned around model routing, context efficiency, hardware support, and agent reliability.
 
-```bash
-export LOCDEX_CLOUD_PROVIDER='openrouter'
-export LOCDEX_CLOUD_MODEL='your-selected-provider/model'
-export OPENROUTER_API_KEY='...'
-```
+That also means this is a useful time to try it and break things.
 
-### Anthropic directly
+If you test Locdex, issues containing your:
 
-```bash
-export LOCDEX_CLOUD_PROVIDER='anthropic'
-export LOCDEX_CLOUD_MODEL='your-selected-claude-model'
-export ANTHROPIC_API_KEY='...'
-```
+- operating system;
+- RAM;
+- CPU/GPU;
+- selected model;
+- task attempted;
+- failure or unexpected behaviour;
 
-### Any OpenAI-compatible endpoint
+are particularly useful.
 
-```bash
-export LOCDEX_CLOUD_PROVIDER='custom'
-export LOCDEX_CLOUD_MODEL='your-selected-model'
-export LOCDEX_CLOUD_BASE_URL='https://your-provider.example/v1/chat/completions'
-export LOCDEX_CLOUD_API_KEY='...'
-```
+## Documentation
 
-Use `LOCDEX_CLOUD_MODELS='model-a,model-b'` instead of `LOCDEX_CLOUD_MODEL` if you intentionally want a fallback chain. The local agent remains first; cloud escalation uses only the provider and model(s) you configured.
+- [Setup Guide](SETUP_GUIDE.md) — detailed installation and setup
+- [Architecture](ARCHITECTURE.md) — system architecture
+- [Build Spec](BUILD_SPEC.md) — implementation specification
+- [Testing](TESTING.md) — testing and launch matrix
+- [Contributing](CONTRIBUTING.md) — how to report issues and contribute changes
 
-## Testing status
+## Contributing
 
-The bundle includes unit/regression coverage for agent editing, Git intent enforcement, model profiles, model manifests, hardware detection, prebuilt-runtime installation policy, router context and safety. These tests do not replace physical-machine acceptance testing.
+Bug reports, hardware reports, model experiments, and pull requests are welcome.
 
-See `TESTING.md` for the launch matrix.
+If you have a 16 GB or 32 GB machine and are willing to test Locdex on a real repository, hardware and runtime reports are especially useful.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
+
+## License
+
+Locdex is released under the [MIT License](LICENSE).
