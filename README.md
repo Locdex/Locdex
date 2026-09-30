@@ -96,7 +96,9 @@ $ locdex chat
 ✓ Committed.
 ```
 
-*A short real-world demo GIF/video will be added here.*
+![Locdex demo using the development smoke model](assets/locdex-demo.gif)
+
+> **Demo note:** This GIF uses Locdex's tiny 1.5B development smoke model for speed. It is not the recommended Locdex coding model; the supported Qwen3-Coder profile is substantially more capable.
 
 ## Local Models
 
