@@ -1,29 +1,57 @@
-# Third-party model/runtime notices
+# Locdex Testing
 
-Locdex does not claim ownership of its local models or llama.cpp runtime.
+## Stage 0 — source/package gate
 
-## Supported default: Qwen3-Coder
+```bash
+python -m pip install -e ".[dev]"
+python scripts/preflight.py
+```
 
-- Base model: `Qwen/Qwen3-Coder-30B-A3B-Instruct`
-- GGUF source: `unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF`
-- Locdex quant: `Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf`
-- Approximate file size: 18.6 GB
-- Base/GGUF model card license at integration time: Apache-2.0
-- Locdex pins the published SHA-256 for this GGUF in `model_profiles.py` and verifies the downloaded bytes before use.
+The gate checks:
 
-## Experimental option: Kimi-K3 distilled 9B
+- all Python source/test files compile;
+- every `locdex` module imports;
+- unit tests collect and pass;
+- wheel construction succeeds;
+- required architecture files are present in the wheel;
+- the built wheel installs into a temporary environment;
+- the packaged `locdex --help` starts.
 
-- Upstream distilled model: `khazarai/Qwen3.5-9B-Kimi-k3-Distilled`
-- GGUF source: `mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF`
-- Locdex quant: Q4_K_M
-- Approximate file size: 5.8 GB
-- Model card license at integration time: Apache-2.0
-- This model is marked experimental in Locdex until the project has its own repeatable repository-agent benchmark results.
+## Stage 1 — architecture smoke
 
-For production releases, pin a reviewed Hugging Face revision and checksum for every supported model release. The current downloader records the resolved revision and observed SHA-256 in a per-model local manifest.
+```bash
+locdex status
+locdex models
+locdex prepare --task "inspect this repository"
+```
 
-## Runtime
+Verify context is bounded and the route is local-first.
 
-Locdex uses `llama-cpp-python`, Python bindings around llama.cpp, as the embedded GGUF inference runtime. Users do not need Ollama.
+## Stage 2 — cloud Context Gateway smoke
 
-Locdex's setup command selects upstream prebuilt wheel repositories for CPU, CUDA, Metal, ROCm, HIP Radeon or Vulkan where applicable. It deliberately passes `--only-binary=:all:` so setup fails clearly when a matching wheel is unavailable instead of silently compiling native code on the user's machine.
+```bash
+locdex prepare --task "password=supersecret fix auth" --cloud
+```
+
+Verify that the output reports at least one redaction and does not expose the secret value.
+
+## Later stages
+
+Runtime/model, tool execution, Git, provider APIs, benchmarks, and platform qualification come after the source/package gate.
+
+
+## Routing/telemetry qualification
+
+Before enabling a production telemetry endpoint:
+
+- prove telemetry is disabled by default;
+- prove no endpoint means no network call;
+- fuzz unknown fields and verify fail-closed rejection;
+- inspect `locdex telemetry preview` for forbidden data;
+- test batch failure/requeue behavior;
+- test router rules with local-only, balanced, fast, quality, cost, and provider constraints;
+- test session switching penalties and verification-failure escalation boundaries;
+- test learned artifact checksum/parse/fallback behavior;
+- evaluate calibration (`predicted_success` vs observed success) on held-out LocdexBench cases.
+
+A learned router may only replace `rules-v0` after it beats or matches the current router on held-out quality while meeting cost/privacy regressions defined for the release.
