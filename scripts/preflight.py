@@ -79,6 +79,8 @@ def main() -> int:
             "locdex/cli/app.py",
             "locdex/agent/engine.py",
             "locdex/context/compiler.py",
+            "locdex/models/manager.py",
+            "locdex/models/profiles.py",
             "locdex/security/policy.py",
             "locdex/routing/planner.py",
             "locdex/routing/router.py",
