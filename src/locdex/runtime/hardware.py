@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 import ctypes
-import json
 import os
 import platform
 import re
@@ -12,6 +11,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 _GIB = 1024 ** 3
+_RELATION_PROCESSOR_CORE = 0
 
 
 @dataclass(frozen=True)
@@ -42,16 +42,22 @@ def _round_gb(value: float | None) -> float | None:
 
 def _run_text(args: list[str], timeout: float = 5.0) -> str:
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if platform.system() == "Windows" else 0
-    completed = subprocess.run(
-        args,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=timeout,
-        creationflags=flags,
-    )
+    try:
+        completed = subprocess.run(
+            args,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            creationflags=flags,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        # Hardware probes are advisory. A slow or unavailable external utility
+        # must never make Locdex status/agent preparation fail.
+        return ""
+
     if completed.returncode != 0:
         return ""
     return completed.stdout.strip()
@@ -107,36 +113,68 @@ def _mac_memory() -> tuple[float | None, float | None]:
     return total, None
 
 
-def _powershell_path() -> str | None:
-    return shutil.which("pwsh") or shutil.which("powershell") or shutil.which("powershell.exe")
+def _windows_cpu_name() -> str | None:
+    fallback = os.environ.get("PROCESSOR_IDENTIFIER") or platform.processor() or None
+    try:
+        import winreg
+
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"HARDWARE\DESCRIPTION\System\CentralProcessor\0",
+        ) as key:
+            value, _ = winreg.QueryValueEx(key, "ProcessorNameString")
+        name = str(value).strip()
+        return name or fallback
+    except (ImportError, OSError, ValueError):
+        return fallback
+
+
+def _windows_physical_cpu_count() -> int | None:
+    """
+    Count processor-core relationship records with the native Windows API.
+
+    This avoids WMI/CIM/PowerShell, which can be slow or unavailable on
+    developer machines and should not sit on Locdex's hot path.
+    """
+    try:
+        kernel32 = ctypes.windll.kernel32
+        length = ctypes.c_ulong(0)
+
+        # First call obtains the required variable-length buffer size.
+        kernel32.GetLogicalProcessorInformationEx(
+            _RELATION_PROCESSOR_CORE,
+            None,
+            ctypes.byref(length),
+        )
+        if not length.value:
+            return None
+
+        buffer = ctypes.create_string_buffer(length.value)
+        if not kernel32.GetLogicalProcessorInformationEx(
+            _RELATION_PROCESSOR_CORE,
+            buffer,
+            ctypes.byref(length),
+        ):
+            return None
+
+        raw = buffer.raw[: length.value]
+        offset = 0
+        count = 0
+        while offset + 8 <= len(raw):
+            relationship = int.from_bytes(raw[offset : offset + 4], "little", signed=True)
+            size = int.from_bytes(raw[offset + 4 : offset + 8], "little")
+            if size < 8 or offset + size > len(raw):
+                break
+            if relationship == _RELATION_PROCESSOR_CORE:
+                count += 1
+            offset += size
+        return count or None
+    except (AttributeError, OSError, ValueError):
+        return None
 
 
 def _windows_cpu() -> tuple[str | None, int | None, int | None]:
-    fallback_name = os.environ.get("PROCESSOR_IDENTIFIER") or platform.processor() or None
-    shell = _powershell_path()
-    if not shell:
-        return fallback_name, None, None
-
-    command = (
-        "Get-CimInstance Win32_Processor | "
-        "Select-Object Name,NumberOfCores,NumberOfLogicalProcessors | "
-        "ConvertTo-Json -Compress"
-    )
-    raw = _run_text([shell, "-NoProfile", "-NonInteractive", "-Command", command], timeout=8.0)
-    if not raw:
-        return fallback_name, None, None
-    try:
-        data = json.loads(raw.lstrip("\ufeff"))
-        rows = data if isinstance(data, list) else [data]
-        rows = [row for row in rows if isinstance(row, dict)]
-        if not rows:
-            return fallback_name, None, None
-        name = str(rows[0].get("Name") or fallback_name or "").strip() or None
-        physical = sum(int(row.get("NumberOfCores") or 0) for row in rows) or None
-        logical = sum(int(row.get("NumberOfLogicalProcessors") or 0) for row in rows) or None
-        return name, physical, logical
-    except (TypeError, ValueError, json.JSONDecodeError):
-        return fallback_name, None, None
+    return _windows_cpu_name(), _windows_physical_cpu_count(), os.cpu_count() or None
 
 
 def _nvidia_smi_path() -> str | None:
@@ -183,19 +221,21 @@ def _detect_nvidia() -> dict | None:
     executable = _nvidia_smi_path()
     if not executable:
         return None
+
     query = _run_text(
         [
             executable,
             "--query-gpu=name,memory.total,memory.free,driver_version",
             "--format=csv,noheader,nounits",
         ],
-        timeout=8.0,
+        timeout=5.0,
     )
     rows = _parse_nvidia_query(query)
     if not rows:
         return None
+
     gpu = max(rows, key=lambda row: row.get("vram_total_gb") or 0.0)
-    banner = _run_text([executable], timeout=8.0)
+    banner = _run_text([executable], timeout=5.0)
     match = re.search(r"CUDA Version:\s*([0-9]+(?:\.[0-9]+)?)", banner, re.IGNORECASE)
     gpu["cuda_version"] = match.group(1) if match else None
     return gpu
