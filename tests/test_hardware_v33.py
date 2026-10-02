@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+
 import locdex.runtime.hardware as hardware_module
 
 
@@ -33,3 +35,11 @@ def test_windows_hardware_uses_native_ram_cpu_and_nvidia(monkeypatch):
     assert profile.backend == "cuda"
     assert profile.vram_total_gb == 8.0
     assert profile.cuda_version == "12.8"
+
+
+def test_external_hardware_probe_timeout_is_nonfatal(monkeypatch):
+    def timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=args[0], timeout=kwargs.get("timeout", 1))
+
+    monkeypatch.setattr(hardware_module.subprocess, "run", timeout)
+    assert hardware_module._run_text(["fake-probe"], timeout=0.01) == ""
