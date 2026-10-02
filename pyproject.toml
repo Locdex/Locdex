@@ -21,6 +21,7 @@ dependencies = [
 dev = [
   "pytest>=8.0",
   "ruff>=0.8",
+  "setuptools>=68",
   "wheel>=0.43",
 ]
 
