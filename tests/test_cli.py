@@ -1,6 +1,24 @@
 from locdex.cli.app import build_parser
 
+
 def test_cli_status():
-    args=build_parser().parse_args(["status"]); assert args.command=="status"
+    args = build_parser().parse_args(["status"])
+    assert args.command == "status"
+
+
 def test_cli_prepare():
-    args=build_parser().parse_args(["prepare","--task","inspect"]); assert args.command=="prepare" and args.task=="inspect"
+    args = build_parser().parse_args(["prepare", "--task", "inspect"])
+    assert args.command == "prepare"
+    assert args.task == "inspect"
+
+
+def test_cli_runtime_status():
+    args = build_parser().parse_args(["runtime", "status"])
+    assert args.command == "runtime"
+    assert args.runtime_action == "status"
+
+
+def test_cli_runtime_install_backend():
+    args = build_parser().parse_args(["runtime", "install", "--backend", "cuda"])
+    assert args.runtime_action == "install"
+    assert args.backend == "cuda"
