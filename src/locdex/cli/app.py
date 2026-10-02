@@ -5,7 +5,16 @@ import json
 
 from .. import __version__
 from ..agent import AgentEngine
-from ..models import MODEL_PROFILES
+from ..models import (
+    MODEL_PROFILES,
+    ModelInstallError,
+    all_model_statuses,
+    install_model,
+    model_status,
+    remove_model,
+    select_model,
+    selected_model_key,
+)
 from ..routing import LearnedRouter, RoutingPolicy, RoutingSession, local_candidates, profile_task
 from ..routing.updater import status as router_status, update_from_manifest
 from ..runtime import detect_hardware, install_runtime, runtime_status, verify_runtime
@@ -25,7 +34,20 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("status", help="Show detected hardware.")
-    sub.add_parser("models", help="List built-in local model profiles.")
+    sub.add_parser("models", help="Compatibility alias for model list.")
+
+    model = sub.add_parser("model", help="Manage local GGUF models.")
+    model_sub = model.add_subparsers(dest="model_action", required=True)
+    model_sub.add_parser("list", help="List built-in model profiles and install state.")
+    status_cmd = model_sub.add_parser("status", help="Show selected model or one named model.")
+    status_cmd.add_argument("key", nargs="?")
+    use_cmd = model_sub.add_parser("use", help="Persist the selected local model.")
+    use_cmd.add_argument("key", choices=sorted(MODEL_PROFILES))
+    install_cmd = model_sub.add_parser("install", help="Download and verify a model explicitly.")
+    install_cmd.add_argument("key", choices=sorted(MODEL_PROFILES))
+    install_cmd.add_argument("--force", action="store_true")
+    remove_cmd = model_sub.add_parser("remove", help="Remove a Locdex-managed model from cache.")
+    remove_cmd.add_argument("key", choices=sorted(MODEL_PROFILES))
 
     prep = sub.add_parser("prepare")
     prep.add_argument("--task", required=True)
@@ -72,8 +94,18 @@ def _routing_payload(decision) -> dict:
     }
 
 
-def _print_json(payload: dict) -> None:
+def _print_json(payload) -> None:
     print(json.dumps(payload, indent=2))
+
+
+def _print_model_rows() -> None:
+    for row in all_model_statuses():
+        marker = "*" if row["selected"] else " "
+        installed = "installed" if row["installed"] else "not installed"
+        print(
+            f"{marker} {row['model']}: {row['display_name']} "
+            f"[{row['profile_status']}, {installed}] ~{row['approximate_size_gb']} GB"
+        )
 
 
 def cli(argv: list[str] | None = None) -> int:
@@ -84,9 +116,31 @@ def cli(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "models":
-        for key, profile in MODEL_PROFILES.items():
-            print(f"{key}: {profile.display_name} [{profile.status}] ~{profile.approximate_size_gb} GB")
+        _print_model_rows()
         return 0
+
+    if args.command == "model":
+        try:
+            if args.model_action == "list":
+                _print_model_rows()
+                return 0
+            if args.model_action == "status":
+                _print_json(model_status(args.key or selected_model_key()))
+                return 0
+            if args.model_action == "use":
+                key = select_model(args.key)
+                _print_json(model_status(key))
+                return 0
+            if args.model_action == "install":
+                _print_json(install_model(args.key, force=args.force))
+                return 0
+            if args.model_action == "remove":
+                removed = remove_model(args.key)
+                _print_json({"model": args.key, "removed": removed})
+                return 0
+        except (ModelInstallError, ValueError) as exc:
+            print(f"Locdex model error: {exc}")
+            return 1
 
     if args.command == "runtime":
         if args.runtime_action == "status":
@@ -121,6 +175,7 @@ def cli(argv: list[str] | None = None) -> int:
                 "context_policy": result["plan"].context_policy,
                 "context_tokens": result["context"].total_tokens,
                 "redactions": result["context"].redactions,
+                "selected_model": result["selected_model"],
                 "task_profile": result["task_profile"].to_features(),
                 "router": _routing_payload(result["routing_decision"]),
                 "items": [item.label for item in result["context"].items],
