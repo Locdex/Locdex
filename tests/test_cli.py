@@ -22,3 +22,15 @@ def test_cli_runtime_install_backend():
     args = build_parser().parse_args(["runtime", "install", "--backend", "cuda"])
     assert args.runtime_action == "install"
     assert args.backend == "cuda"
+
+
+def test_cli_model_list():
+    args = build_parser().parse_args(["model", "list"])
+    assert args.command == "model"
+    assert args.model_action == "list"
+
+
+def test_cli_model_use_smoke():
+    args = build_parser().parse_args(["model", "use", "smoke"])
+    assert args.model_action == "use"
+    assert args.key == "smoke"
