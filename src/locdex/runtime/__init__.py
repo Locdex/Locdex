@@ -1,5 +1,11 @@
 from .hardware import HardwareProfile, detect_hardware
-from .installer import RuntimeInstallPlan, install_runtime, plan_runtime_install, select_cuda_track
+from .installer import (
+    RuntimeInstallPlan,
+    install_runtime,
+    plan_runtime_install,
+    select_cuda_track,
+    uninstall_runtime,
+)
 from .manager import RuntimeStatus, runtime_status, verify_runtime
 
 __all__ = [
@@ -11,5 +17,6 @@ __all__ = [
     "plan_runtime_install",
     "runtime_status",
     "select_cuda_track",
+    "uninstall_runtime",
     "verify_runtime",
 ]
