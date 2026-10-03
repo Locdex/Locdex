@@ -16,6 +16,7 @@ from ..routing import (
 from ..routing.model_profile import from_local_profile
 from ..runtime import LlamaCppSession, detect_hardware
 from ..tools import TOOLS, ToolError, execute_tool
+from ..verification import VerificationEngine
 from .protocol import (
     AGENT_RESPONSE_SCHEMA,
     GIT_MUTATING_TOOLS,
@@ -49,6 +50,7 @@ class AgentEngine:
         self.model_key = model_key or selected_model_key()
         self.context = ContextCompiler()
         self.router = LearnedRouter()
+        self.verifier = VerificationEngine()
 
     def prepare(
         self,
@@ -119,6 +121,21 @@ class AgentEngine:
         if len(text) <= limit:
             return text
         return text[:limit] + "...<TRUNCATED>"
+
+    @staticmethod
+    def _preexisting_changed_paths(status_result: dict[str, Any]) -> set[str]:
+        output = str(status_result.get("output", ""))
+        paths: set[str] = set()
+        for line in output.splitlines():
+            if not line or line.startswith("##"):
+                continue
+            # git status --short: XY<space>path, with rename shown as old -> new.
+            candidate = line[3:].strip() if len(line) >= 4 else ""
+            if " -> " in candidate:
+                candidate = candidate.split(" -> ", 1)[1].strip()
+            if candidate:
+                paths.add(candidate.replace("\\", "/"))
+        return paths
 
     @staticmethod
     def _smoke_bootstrap_paths(
@@ -299,6 +316,31 @@ class AgentEngine:
             }
         )
 
+        baseline_status = self._run_tool(
+            repo_path=repo_path,
+            task=task,
+            name="git_status",
+            args={},
+            progress=progress,
+        )
+        tool_calls.append(
+            {"tool": "git_status", "args": {}, "result": baseline_status}
+        )
+        if baseline_status.get("ok") is True:
+            state.preexisting_changes = self._preexisting_changed_paths(baseline_status)
+            if state.preexisting_changes:
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "PRE-EXISTING USER CHANGES before this task: "
+                            + ", ".join(sorted(state.preexisting_changes))
+                            + ". Preserve unrelated existing work. Prefer exact replacements "
+                            "over whole-file rewrites on dirty files."
+                        ),
+                    }
+                )
+
         # The 1.5B smoke model is useful for validating mechanics but is weak at
         # planning multi-step tool use. Give it a small amount of exact source
         # deterministically so its first generation can focus on the edit.
@@ -367,50 +409,36 @@ class AgentEngine:
                     continue
 
                 if last_mutation_index is not None:
-                    attempted, passed, unavailable = self._validation_after(
-                        tool_calls,
-                        last_mutation_index,
+                    state.verification_attempts += 1
+                    self._emit(progress, "[Agent] verify")
+                    verification = self.verifier.verify(
+                        repo_path,
+                        sorted(state.files_modified),
                     )
-                    if not attempted:
-                        verify_args: dict[str, Any] = {}
-                        verify_result = self._run_tool(
-                            repo_path=repo_path,
-                            task=task,
-                            name="run_tests",
-                            args=verify_args,
-                            progress=progress,
+                    state.verification = verification.to_dict()
+
+                    if not verification.passed:
+                        for failure in verification.failures:
+                            detail = failure.output or f"{failure.name} failed"
+                            state.failures.append(f"{failure.name}: {detail}")
+                        messages.append(
+                            {
+                                "role": "assistant",
+                                "content": json.dumps(decision, ensure_ascii=False),
+                            }
                         )
-                        verify_call = {
-                            "tool": "run_tests",
-                            "args": verify_args,
-                            "result": verify_result,
-                        }
-                        tool_calls.append(verify_call)
-                        attempted, passed, unavailable = self._validation_after(
-                            tool_calls,
-                            last_mutation_index,
+                        messages.append(
+                            {
+                                "role": "user",
+                                "content": (
+                                    "Completion rejected because final verification failed. "
+                                    "Use the failure evidence below to diagnose and repair the "
+                                    "workspace, then verify again before finishing.\n"
+                                    + self._compact_result(verification.to_dict(), 7000)
+                                ),
+                            }
                         )
-                        if attempted and not (passed or unavailable):
-                            messages.append(
-                                {
-                                    "role": "assistant",
-                                    "content": json.dumps(
-                                        decision,
-                                        ensure_ascii=False,
-                                    ),
-                                }
-                            )
-                            messages.append(
-                                {
-                                    "role": "user",
-                                    "content": (
-                                        "Automatic validation failed after your edit. "
-                                        "Diagnose the failure and continue.\n"
-                                        + self._compact_result(verify_result)
-                                    ),
-                                }
-                            )
-                            continue
+                        continue
 
                     diff_result = self._run_tool(
                         repo_path=repo_path,
@@ -435,6 +463,9 @@ class AgentEngine:
                     "files_read": sorted(state.files_read),
                     "files_modified": sorted(state.files_modified),
                     "diff": state.current_diff,
+                    "verification": state.verification,
+                    "verification_attempts": state.verification_attempts,
+                    "preexisting_changes": sorted(state.preexisting_changes),
                     "tool_calls": tool_calls,
                 }
 
@@ -479,6 +510,9 @@ class AgentEngine:
                     "steps": step,
                     "files_read": sorted(state.files_read),
                     "files_modified": sorted(state.files_modified),
+                    "verification": state.verification,
+                    "verification_attempts": state.verification_attempts,
+                    "preexisting_changes": sorted(state.preexisting_changes),
                     "tool_calls": tool_calls,
                 }
 
