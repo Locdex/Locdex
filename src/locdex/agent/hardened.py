@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ..intelligence import find_references, find_symbol, related_files
 from ..runtime import LlamaCppSession, detect_hardware
 from .engine import AgentEngine as BaseAgentEngine
 from .guards import (
@@ -143,6 +144,20 @@ class AgentEngine(BaseAgentEngine):
         args: dict[str, Any],
         progress,
     ) -> dict[str, Any]:
+        if name == "find_symbol":
+            self._emit(progress, "[Agent] find_symbol")
+            symbol = str(args.get("name", "")).strip()
+            return {"matches": find_symbol(repo_path, symbol)}
+        if name == "find_references":
+            self._emit(progress, "[Agent] find_references")
+            symbol = str(args.get("name", "")).strip()
+            return {"matches": find_references(repo_path, symbol)}
+        if name == "related_files":
+            self._emit(progress, "[Agent] related_files")
+            query = str(args.get("task", task))
+            limit = int(args.get("limit", 8))
+            return {"files": related_files(repo_path, query, limit=limit)}
+
         snapshot = snapshot_file(
             repo_path,
             name,
