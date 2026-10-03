@@ -17,7 +17,15 @@ from ..models import (
 )
 from ..routing import LearnedRouter, RoutingPolicy, RoutingSession, local_candidates, profile_task
 from ..routing.updater import status as router_status, update_from_manifest
-from ..runtime import (\n    RuntimeExecutionError,\n    detect_hardware,\n    install_runtime,\n    run_prompt,\n    runtime_status,\n    uninstall_runtime,\n    verify_runtime,\n)
+from ..runtime import (
+    RuntimeExecutionError,
+    detect_hardware,
+    install_runtime,
+    run_prompt,
+    runtime_status,
+    uninstall_runtime,
+    verify_runtime,
+)
 from ..telemetry import clear as telemetry_clear
 from ..telemetry import enabled as telemetry_enabled
 from ..telemetry import endpoint as telemetry_endpoint
