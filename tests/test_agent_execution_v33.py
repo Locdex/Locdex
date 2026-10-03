@@ -263,4 +263,4 @@ def test_agent_repairs_after_failed_final_verification(tmp_path):
     assert "return 3" in target.read_text(encoding="utf-8")
     assert result["verification"]["passed"] is True
     assert result["verification_attempts"] == 2
-    assert any("tests:" in failure for failure in result["state_failures"]) if "state_failures" in result else True
+    assert any("tests:" in failure for failure in result["failures"])
