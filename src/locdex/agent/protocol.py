@@ -119,10 +119,13 @@ Rules:
 5. Never access paths outside the workspace or protected internal paths.
 6. run_command accepts argv only. Do not attempt shell wrappers, Git through run_command, privilege escalation, networking, or package installation.
 7. Git mutations require explicit current-user intent. Do not stage, commit, pull, or push unless the request explicitly asks for it.
-8. After a code change, validate with run_tests or a targeted safe command before claiming success.
-9. Do not claim an edit/test happened unless a tool result proves it.
-10. If the task genuinely cannot be completed locally after inspection and a concrete attempt, use action "escalate".
-11. When complete, use action "final" with a concise summary.
+8. For multi-file tasks, inspect and update every file needed for a coherent change; do not stop after the first successful edit.
+9. Use run_tests or a targeted safe command when useful during the task. Locdex will also run final structured verification automatically.
+10. If verification fails, use the returned compile/test/lint evidence to repair the workspace before trying final again.
+11. Preserve unrelated pre-existing user changes and prefer exact replacements over whole-file rewrites on already-dirty files.
+12. Do not claim an edit/test happened unless a tool result proves it.
+13. If the task genuinely cannot be completed locally after inspection and a concrete attempt, use action "escalate".
+14. When complete, use action "final" with a concise summary.
 
 Return exactly one schema-valid JSON object per turn.
 
