@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -124,6 +125,72 @@ def _extract_text(response: Any) -> str:
     except (KeyError, IndexError, TypeError, AttributeError):
         pass
     raise RuntimeExecutionError("llama.cpp returned an unexpected response shape")
+
+
+class LlamaCppSession:
+    """Load one GGUF once and reuse it across a bounded Locdex task."""
+
+    def __init__(
+        self,
+        *,
+        model_key: str | None = None,
+        hardware: HardwareProfile | None = None,
+    ):
+        self.plan = plan_inference(
+            model_key=model_key,
+            hardware=hardware,
+            max_tokens=512,
+            temperature=0.0,
+        )
+        self._llama = _load_llama(self.plan)
+
+    def chat(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        max_tokens: int = 512,
+        temperature: float = 0.1,
+        response_format: dict[str, Any] | None = None,
+    ) -> dict:
+        try:
+            response = self._llama.create_chat_completion(
+                messages=messages,
+                max_tokens=max(1, int(max_tokens)),
+                temperature=max(0.0, min(2.0, float(temperature))),
+                response_format=response_format,
+            )
+        except Exception as exc:
+            raise RuntimeExecutionError(f"Inference failed: {exc}") from exc
+
+        return {
+            "text": _extract_text(response),
+            "usage": response.get("usage") if isinstance(response, dict) else None,
+        }
+
+    def json_completion(
+        self,
+        messages: list[dict[str, str]],
+        schema: dict[str, Any],
+        *,
+        max_tokens: int = 512,
+        temperature: float = 0.0,
+    ) -> dict[str, Any]:
+        result = self.chat(
+            messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            response_format={"type": "json_object", "schema": schema},
+        )
+        raw = result["text"]
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise RuntimeExecutionError(
+                f"Model returned invalid JSON despite schema mode: {raw[:500]}"
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise RuntimeExecutionError("Model JSON response must be an object.")
+        return parsed
 
 
 def run_prompt(
