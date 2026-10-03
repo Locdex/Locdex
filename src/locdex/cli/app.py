@@ -239,9 +239,24 @@ def cli(argv: list[str] | None = None) -> int:
             modified = result.get("files_modified") or []
             if modified:
                 print("Modified: " + ", ".join(modified))
+
+            verification = result.get("verification") or {}
+            checks = verification.get("checks") or []
+            if checks:
+                check_text = ", ".join(
+                    f"{check.get('name')}={check.get('status')}"
+                    for check in checks
+                )
+                print(f"Verification: {check_text}")
+
+            preexisting = result.get("preexisting_changes") or []
+            if preexisting:
+                print("Pre-existing changes preserved: " + ", ".join(preexisting))
+
             print(
                 f"Status: {result['status']} | model: {result['model']} | "
-                f"steps: {result['steps']}"
+                f"steps: {result['steps']} | verification attempts: "
+                f"{result.get('verification_attempts', 0)}"
             )
         return 0 if result["status"] == "completed" else 1
 
