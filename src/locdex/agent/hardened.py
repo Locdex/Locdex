@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 from ..runtime import LlamaCppSession, detect_hardware
@@ -18,9 +19,50 @@ class _RepairAwareSession:
     def __init__(self, inner: Any, engine: AgentEngine):
         self.inner = inner
         self.engine = engine
+        self._last_signature: str | None = None
+        self._repeat_count = 0
 
     def json_completion(self, messages, schema, **kwargs):
         decision = self.inner.json_completion(messages, schema, **kwargs)
+
+        signature = json.dumps(
+            {
+                "action": decision.get("action"),
+                "tool": decision.get("tool"),
+                "path": (decision.get("args") or {}).get("path")
+                if isinstance(decision.get("args"), dict)
+                else None,
+            },
+            sort_keys=True,
+        )
+        if signature == self._last_signature:
+            self._repeat_count += 1
+        else:
+            self._last_signature = signature
+            self._repeat_count = 0
+
+        if self._repeat_count >= 1 and str(decision.get("action", "")) == "tool":
+            retry_messages = list(messages)
+            retry_messages.append(
+                {
+                    "role": "assistant",
+                    "content": json.dumps(decision, ensure_ascii=False),
+                }
+            )
+            retry_messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "Do not repeat the same tool/path strategy. The previous attempt "
+                        "did not make progress. Re-read the current source if necessary, "
+                        "then choose a different exact edit or run validation."
+                    ),
+                }
+            )
+            decision = self.inner.json_completion(retry_messages, schema, **kwargs)
+            self._last_signature = None
+            self._repeat_count = 0
+
         while (
             str(decision.get("action", "")) == "escalate"
             and self.engine._repair_required
@@ -84,6 +126,24 @@ class AgentEngine(BaseAgentEngine):
             args,
             set(WORKSPACE_MUTATING_TOOLS),
         )
+
+        if name == "write_file" and snapshot is not None:
+            path, previous = snapshot
+            if previous is not None and not bool(args.get("overwrite", False)):
+                try:
+                    current_source = path.read_text(encoding="utf-8")
+                except (OSError, UnicodeDecodeError):
+                    current_source = ""
+                self._repair_required = True
+                return {
+                    "error": (
+                        "write_file cannot replace an existing file without overwrite=true. "
+                        "Use replace_in_file with exact current text instead."
+                    ),
+                    "path": str(args.get("path", "")),
+                    "current_source": current_source[:5000],
+                }
+
         result = super()._run_tool(
             repo_path=repo_path,
             task=task,
@@ -101,6 +161,18 @@ class AgentEngine(BaseAgentEngine):
 
         if "error" in guarded and name in WORKSPACE_MUTATING_TOOLS:
             self._repair_required = True
+            path_text = guarded.get("path") or args.get("path")
+            if isinstance(path_text, str):
+                candidate = (Path(repo_path).resolve() / path_text).resolve()
+                try:
+                    current = candidate.read_text(encoding="utf-8")
+                except (OSError, UnicodeDecodeError):
+                    current = ""
+                if current:
+                    guarded["current_source"] = current[:5000]
+                    guarded["repair_hint"] = (
+                        "Use the current_source exactly. Prefer a small replace_in_file edit."
+                    )
         elif name == "run_tests":
             self._repair_required = guarded.get("ok") is not True
 
