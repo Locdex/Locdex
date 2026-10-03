@@ -6,15 +6,20 @@ from .installer import (
     select_cuda_track,
     uninstall_runtime,
 )
+from .llama_cpp import InferencePlan, RuntimeExecutionError, plan_inference, run_prompt
 from .manager import RuntimeStatus, runtime_status, verify_runtime
 
 __all__ = [
     "HardwareProfile",
+    "InferencePlan",
+    "RuntimeExecutionError",
     "RuntimeInstallPlan",
     "RuntimeStatus",
     "detect_hardware",
     "install_runtime",
+    "plan_inference",
     "plan_runtime_install",
+    "run_prompt",
     "runtime_status",
     "select_cuda_track",
     "uninstall_runtime",
