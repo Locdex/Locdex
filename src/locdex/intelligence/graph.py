@@ -25,11 +25,18 @@ _TASK_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
 
 
 def _python_files(root: Path) -> list[Path]:
-    return [
-        path
-        for path in sorted(root.rglob("*.py"))
-        if path.is_file() and not any(part in _IGNORED_PARTS for part in path.parts)
-    ]
+    result: list[Path] = []
+    for path in sorted(root.rglob("*.py")):
+        if not path.is_file():
+            continue
+        try:
+            relative_parts = path.relative_to(root).parts
+        except ValueError:
+            continue
+        if any(part in _IGNORED_PARTS for part in relative_parts):
+            continue
+        result.append(path)
+    return result
 
 
 def _relative(root: Path, path: Path) -> str:
