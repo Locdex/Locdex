@@ -87,6 +87,7 @@ def main() -> int:
             "locdex/routing/task_profile.py",
             "locdex/runtime/hardware.py",
             "locdex/runtime/installer.py",
+            "locdex/runtime/llama_cpp.py",
             "locdex/runtime/manager.py",
             "locdex/telemetry/schema.py",
             "locdex/telemetry/client.py",
