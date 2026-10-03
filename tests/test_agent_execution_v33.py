@@ -45,7 +45,8 @@ def test_agent_executes_read_edit_verify_finish(tmp_path):
     assert result["status"] == "completed"
     assert target.read_text(encoding="utf-8") == "VALUE = 2\n"
     assert result["files_modified"] == ["app.py"]
-    assert any(call["tool"] == "run_tests" for call in result["tool_calls"])
+    assert result["verification"]["passed"] is True
+    assert result["verification_attempts"] == 1
 
 
 def test_agent_rejects_premature_final_for_change_task(tmp_path):
@@ -135,7 +136,8 @@ def test_smoke_agent_defers_premature_escalation_and_attempts_edit(tmp_path):
     assert "return a + b" in target.read_text(encoding="utf-8")
     assert "calculator.py" in result["files_read"]
     assert result["files_modified"] == ["calculator.py"]
-    assert any(call["tool"] == "run_tests" for call in result["tool_calls"])
+    assert result["verification"]["passed"] is True
+    assert result["verification_attempts"] == 1
 
 
 def test_agent_handles_multi_file_change_and_final_verification(tmp_path):
