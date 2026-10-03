@@ -19,8 +19,7 @@ class _RepairAwareSession:
     def __init__(self, inner: Any, engine: AgentEngine):
         self.inner = inner
         self.engine = engine
-        self._last_signature: str | None = None
-        self._repeat_count = 0
+        self._signature_counts: dict[str, int] = {}
 
     def json_completion(self, messages, schema, **kwargs):
         if messages:
@@ -40,13 +39,9 @@ class _RepairAwareSession:
             },
             sort_keys=True,
         )
-        if signature == self._last_signature:
-            self._repeat_count += 1
-        else:
-            self._last_signature = signature
-            self._repeat_count = 0
+        self._signature_counts[signature] = self._signature_counts.get(signature, 0) + 1
 
-        if self._repeat_count >= 1 and str(decision.get("action", "")) == "tool":
+        if self._signature_counts[signature] >= 2 and str(decision.get("action", "")) == "tool":
             retry_messages = list(messages)
             retry_messages.append(
                 {
@@ -65,8 +60,19 @@ class _RepairAwareSession:
                 }
             )
             decision = self.inner.json_completion(retry_messages, schema, **kwargs)
-            self._last_signature = None
-            self._repeat_count = 0
+            replacement_signature = json.dumps(
+                {
+                    "action": decision.get("action"),
+                    "tool": decision.get("tool"),
+                    "path": (decision.get("args") or {}).get("path")
+                    if isinstance(decision.get("args"), dict)
+                    else None,
+                },
+                sort_keys=True,
+            )
+            self._signature_counts[replacement_signature] = (
+                self._signature_counts.get(replacement_signature, 0) + 1
+            )
 
         while (
             str(decision.get("action", "")) == "escalate"
