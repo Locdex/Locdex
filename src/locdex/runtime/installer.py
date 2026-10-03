@@ -134,6 +134,10 @@ def build_install_command(plan: RuntimeInstallPlan, *, force_reinstall: bool = F
     return command
 
 
+def build_uninstall_command() -> list[str]:
+    return [sys.executable, "-m", "pip", "uninstall", "-y", "llama-cpp-python"]
+
+
 def install_runtime(*, backend: str = "auto", repair: bool = False) -> dict:
     from .manager import runtime_status
 
@@ -166,4 +170,29 @@ def install_runtime(*, backend: str = "auto", repair: bool = False) -> dict:
         "plan": plan.to_dict(),
         "command": command,
         "status": after.to_dict(),
+    }
+
+
+def uninstall_runtime() -> dict:
+    from .manager import runtime_status
+
+    before = runtime_status()
+    if not before.installed:
+        return {
+            "changed": False,
+            "reason": "llama-cpp-python is not installed for this interpreter",
+            "status": before.to_dict(),
+        }
+
+    command = build_uninstall_command()
+    result = subprocess.run(command, check=False)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"llama-cpp-python uninstall failed with exit code {result.returncode}."
+        )
+
+    return {
+        "changed": True,
+        "command": command,
+        "reason": "llama-cpp-python removed; installed GGUF models were left intact",
     }
