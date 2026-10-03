@@ -85,6 +85,18 @@ def build_parser() -> argparse.ArgumentParser:
     run_cmd.add_argument("--temperature", type=float, default=0.1)
     run_cmd.add_argument("--json", action="store_true", dest="json_output")
 
+    task_cmd = sub.add_parser("task", help="Execute a bounded coding-agent task in a repository.")
+    task_cmd.add_argument("--task", required=True)
+    task_cmd.add_argument("--repo", default=".")
+    task_cmd.add_argument("--model", choices=sorted(MODEL_PROFILES))
+    task_cmd.add_argument("--max-steps", type=int, default=6)
+    task_cmd.add_argument(
+        "--mode",
+        choices=["local_only", "balanced", "fast", "quality"],
+        default="balanced",
+    )
+    task_cmd.add_argument("--json", action="store_true", dest="json_output")
+
     telemetry = sub.add_parser("telemetry")
     telemetry.add_argument(
         "action",
@@ -204,6 +216,34 @@ def cli(argv: list[str] | None = None) -> int:
         else:
             print(result["text"])
         return 0
+
+    if args.command == "task":
+        engine = AgentEngine(model_key=args.model)
+        try:
+            result = engine.execute(
+                args.task,
+                args.repo,
+                max_steps=args.max_steps,
+                routing_mode=args.mode,
+                progress=None if args.json_output else print,
+            )
+        except RuntimeExecutionError as exc:
+            print(f"Locdex agent error: {exc}")
+            return 1
+
+        if args.json_output:
+            _print_json(result)
+        else:
+            print()
+            print(result["summary"])
+            modified = result.get("files_modified") or []
+            if modified:
+                print("Modified: " + ", ".join(modified))
+            print(
+                f"Status: {result['status']} | model: {result['model']} | "
+                f"steps: {result['steps']}"
+            )
+        return 0 if result["status"] == "completed" else 1
 
     if args.command == "prepare":
         result = AgentEngine().prepare(
