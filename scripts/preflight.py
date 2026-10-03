@@ -78,6 +78,7 @@ def main() -> int:
         required = {
             "locdex/cli/app.py",
             "locdex/agent/engine.py",
+            "locdex/agent/protocol.py",
             "locdex/context/compiler.py",
             "locdex/models/manager.py",
             "locdex/models/profiles.py",
@@ -91,6 +92,8 @@ def main() -> int:
             "locdex/runtime/manager.py",
             "locdex/telemetry/schema.py",
             "locdex/telemetry/client.py",
+            "locdex/tools/executor.py",
+            "locdex/tools/registry.py",
             "locdex/extensions/enterprise.py",
         }
         missing = required - names
