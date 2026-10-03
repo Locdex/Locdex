@@ -47,3 +47,13 @@ def test_cli_run_prompt():
     assert args.command == "run"
     assert args.prompt == "hello"
     assert args.model == "smoke"
+
+
+def test_cli_task_command():
+    args = build_parser().parse_args(
+        ["task", "--task", "change x", "--repo", ".", "--model", "smoke", "--max-steps", "4"]
+    )
+    assert args.command == "task"
+    assert args.task == "change x"
+    assert args.model == "smoke"
+    assert args.max_steps == 4
