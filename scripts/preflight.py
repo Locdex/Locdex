@@ -94,6 +94,7 @@ def main() -> int:
             "locdex/telemetry/client.py",
             "locdex/tools/executor.py",
             "locdex/tools/registry.py",
+            "locdex/verification/engine.py",
             "locdex/extensions/enterprise.py",
         }
         missing = required - names
