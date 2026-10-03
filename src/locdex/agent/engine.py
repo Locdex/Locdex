@@ -466,6 +466,7 @@ class AgentEngine:
                     "verification": state.verification,
                     "verification_attempts": state.verification_attempts,
                     "preexisting_changes": sorted(state.preexisting_changes),
+                    "failures": list(state.failures),
                     "tool_calls": tool_calls,
                 }
 
@@ -593,5 +594,9 @@ class AgentEngine:
             "steps": step_cap,
             "files_read": sorted(state.files_read),
             "files_modified": sorted(state.files_modified),
+            "verification": state.verification,
+            "verification_attempts": state.verification_attempts,
+            "preexisting_changes": sorted(state.preexisting_changes),
+            "failures": list(state.failures),
             "tool_calls": tool_calls,
         }
