@@ -96,8 +96,14 @@ def system_prompt(repo_context: str, model_key: str) -> str:
     smoke_note = ""
     if model_key == "smoke":
         smoke_note = (
-            "\nSMOKE MODEL MODE: Keep each step narrow. Read one relevant file, make the smallest "
-            "exact edit, validate it, and finish. Avoid broad architectural rewrites.\n"
+            "\nSMOKE MODEL MODE: Keep each step narrow. Locdex may preload a few likely source/test "
+            "files before your first decision. Use that exact source. For a small local bug, do not "
+            "escalate merely because you are uncertain: attempt the smallest concrete edit with "
+            "replace_in_file or write_file, validate it, then finish. Avoid broad rewrites.\n"
+            "Example action shapes: "
+            "{\"action\":\"tool\",\"tool\":\"replace_in_file\",\"args\":"
+            "{\"path\":\"app.py\",\"old\":\"x = 1\",\"new\":\"x = 2\"}} then "
+            "{\"action\":\"tool\",\"tool\":\"run_tests\",\"args\":{}}.\n"
         )
 
     return f"""You are Locdex, a local-first coding agent operating directly in the user's repository.
