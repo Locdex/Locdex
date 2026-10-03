@@ -69,3 +69,56 @@ def test_run_prompt_returns_chat_text(monkeypatch):
     assert result["text"] == "LOCDEX_OK"
     assert result["model"] == "smoke"
     assert result["backend"] == "cpu"
+
+
+def test_persistent_session_uses_json_schema_mode(monkeypatch):
+    plan = InferencePlan(
+        model_key="smoke",
+        model_path="smoke.gguf",
+        backend="cpu",
+        n_ctx=4096,
+        n_threads=2,
+        n_gpu_layers=0,
+        max_tokens=128,
+        temperature=0.0,
+    )
+
+    class FakeLlama:
+        def __init__(self):
+            self.calls = 0
+            self.last_kwargs = None
+
+        def create_chat_completion(self, **kwargs):
+            self.calls += 1
+            self.last_kwargs = kwargs
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"action":"final","summary":"done"}'
+                        }
+                    }
+                ]
+            }
+
+    fake = FakeLlama()
+    monkeypatch.setattr(runtime_module, "plan_inference", lambda **kwargs: plan)
+    monkeypatch.setattr(runtime_module, "_load_llama", lambda supplied_plan: fake)
+
+    session = runtime_module.LlamaCppSession(model_key="smoke")
+    schema = {
+        "type": "object",
+        "properties": {"action": {"type": "string"}},
+        "required": ["action"],
+    }
+    decision = session.json_completion(
+        [{"role": "user", "content": "finish"}],
+        schema,
+    )
+
+    assert decision["action"] == "final"
+    assert fake.calls == 1
+    assert fake.last_kwargs["response_format"] == {
+        "type": "json_object",
+        "schema": schema,
+    }
