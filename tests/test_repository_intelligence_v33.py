@@ -64,10 +64,10 @@ def test_symbol_and_reference_queries(tmp_path):
         }
     ]
     assert {item["path"] for item in references} >= {
-        "calculator.py",
         "formatter.py",
         "test_operations.py",
     }
+    assert "calculator.py" not in {item["path"] for item in references}
 
 
 def test_related_files_rank_cross_file_task(tmp_path):
