@@ -60,3 +60,10 @@ def test_runtime_install_never_builds_llama_cpp_from_source(monkeypatch):
     assert "--prefer-binary" in command
     assert "--extra-index-url" in command
     assert plan.index_url.endswith("/cpu")
+
+
+def test_runtime_uninstall_command_is_noninteractive():
+    from locdex.runtime.installer import build_uninstall_command
+
+    command = build_uninstall_command()
+    assert command[-3:] == ["uninstall", "-y", "llama-cpp-python"]
