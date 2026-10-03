@@ -121,6 +121,49 @@ class AgentEngine:
         return text[:limit] + "...<TRUNCATED>"
 
     @staticmethod
+    def _smoke_bootstrap_paths(
+        task: str,
+        bootstrap_result: dict[str, Any],
+        *,
+        limit: int = 4,
+    ) -> list[str]:
+        files = bootstrap_result.get("files")
+        if not isinstance(files, list):
+            return []
+
+        task_lower = task.lower()
+        task_terms = {
+            token.strip(".,:;()[]{}'\"")
+            for token in task_lower.split()
+            if len(token.strip(".,:;()[]{}'\"")) >= 3
+        }
+        code_suffixes = (
+            ".py", ".pyi", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs",
+            ".java", ".c", ".h", ".cpp", ".hpp",
+        )
+
+        def score(path: str) -> tuple[int, int, int, str]:
+            lower = path.lower()
+            points = 0
+            if lower.endswith(code_suffixes):
+                points += 3
+            if any(term in lower for term in task_terms):
+                points += 8
+            if ("test" in lower or "spec" in lower) and any(
+                word in task_lower for word in ("test", "fail", "bug", "fix")
+            ):
+                points += 5
+            depth = lower.count("/")
+            return (-points, depth, len(lower), lower)
+
+        candidates = [
+            str(path)
+            for path in files
+            if isinstance(path, str) and path.lower().endswith(code_suffixes)
+        ]
+        return sorted(candidates, key=score)[: max(1, min(int(limit), 6))]
+
+    @staticmethod
     def _is_validation_call(call: dict[str, Any]) -> bool:
         tool = call.get("tool")
         if tool == "run_tests":
@@ -256,6 +299,38 @@ class AgentEngine:
             }
         )
 
+        # The 1.5B smoke model is useful for validating mechanics but is weak at
+        # planning multi-step tool use. Give it a small amount of exact source
+        # deterministically so its first generation can focus on the edit.
+        if self.model_key == "smoke":
+            for path in self._smoke_bootstrap_paths(task, bootstrap_result):
+                read_args = {"path": path, "start_line": 1, "end_line": 240}
+                read_result = self._run_tool(
+                    repo_path=repo_path,
+                    task=task,
+                    name="read_file",
+                    args=read_args,
+                    progress=progress,
+                )
+                read_call = {
+                    "tool": "read_file",
+                    "args": read_args,
+                    "result": read_result,
+                }
+                tool_calls.append(read_call)
+                if "error" not in read_result and read_result.get("path"):
+                    state.files_read.add(str(read_result["path"]))
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            f"TOOL RESULT for read_file {path}:\n"
+                            + self._compact_result(read_result, 4500)
+                        ),
+                    }
+                )
+
+        escalation_deferrals = 0
         step_cap = max(1, min(int(max_steps), 20))
         for step in range(1, step_cap + 1):
             state.attempts = step
@@ -364,6 +439,33 @@ class AgentEngine:
                 }
 
             if action == "escalate":
+                if (
+                    requires_change
+                    and last_mutation_index is None
+                    and state.files_read
+                    and escalation_deferrals < 2
+                ):
+                    escalation_deferrals += 1
+                    messages.append(
+                        {
+                            "role": "assistant",
+                            "content": json.dumps(decision, ensure_ascii=False),
+                        }
+                    )
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "Escalation deferred: relevant workspace source has already "
+                                "been provided, but no concrete edit has been attempted. "
+                                "Use replace_in_file or write_file to make the smallest "
+                                "reasonable change, then validate it. Escalate only if a "
+                                "real tool attempt fails or the requested change is impossible."
+                            ),
+                        }
+                    )
+                    continue
+
                 state.phase = "escalate"
                 return {
                     "status": "escalate",
