@@ -22,6 +22,18 @@ class _RepairAwareSession:
         self._signature_counts: dict[str, int] = {}
 
     def json_completion(self, messages, schema, **kwargs):
+        if (
+            self.engine._repair_required
+            and self.engine._mutations_since_validation >= 2
+        ):
+            return {
+                "action": "tool",
+                "tool": "run_tests",
+                "args": {},
+                "summary": "Re-run validation after bounded repair edits.",
+                "confidence": 1.0,
+            }
+
         if messages:
             latest = str(messages[-1].get("content", "")).lower()
             if "final verification failed" in latest:
@@ -207,6 +219,7 @@ class AgentEngine(BaseAgentEngine):
     ) -> dict:
         self._repair_required = False
         self._repair_deferrals = 0
+        self._mutations_since_validation = 0
 
         inner = session or LlamaCppSession(
             model_key=self.model_key,
