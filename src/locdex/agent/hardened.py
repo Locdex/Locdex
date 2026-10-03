@@ -23,6 +23,11 @@ class _RepairAwareSession:
         self._repeat_count = 0
 
     def json_completion(self, messages, schema, **kwargs):
+        if messages:
+            latest = str(messages[-1].get("content", "")).lower()
+            if "final verification failed" in latest:
+                self.engine._repair_required = True
+
         decision = self.inner.json_completion(messages, schema, **kwargs)
 
         signature = json.dumps(
