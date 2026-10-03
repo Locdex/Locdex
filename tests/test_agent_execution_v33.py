@@ -98,3 +98,41 @@ def test_git_mutation_requires_explicit_intent(tmp_path):
             {"message": "should not run"},
             explicit_user_intent=False,
         )
+
+
+def test_smoke_agent_defers_premature_escalation_and_attempts_edit(tmp_path):
+    target = tmp_path / "calculator.py"
+    target.write_text("def add(a, b):\n    return a - b\n", encoding="utf-8")
+    (tmp_path / "test_calculator.py").write_text(
+        "from calculator import add\n\ndef test_add():\n    assert add(2, 3) == 5\n",
+        encoding="utf-8",
+    )
+
+    session = FakeSession(
+        [
+            {"action": "escalate", "reason": "uncertain", "confidence": 0.2},
+            {
+                "action": "tool",
+                "tool": "replace_in_file",
+                "args": {
+                    "path": "calculator.py",
+                    "old": "return a - b",
+                    "new": "return a + b",
+                },
+            },
+            {"action": "final", "summary": "Fixed add.", "confidence": 0.9},
+        ]
+    )
+
+    result = AgentEngine(model_key="smoke").execute(
+        "Fix the failing add function and run the tests.",
+        str(tmp_path),
+        session=session,
+        max_steps=5,
+    )
+
+    assert result["status"] == "completed"
+    assert "return a + b" in target.read_text(encoding="utf-8")
+    assert "calculator.py" in result["files_read"]
+    assert result["files_modified"] == ["calculator.py"]
+    assert any(call["tool"] == "run_tests" for call in result["tool_calls"])
