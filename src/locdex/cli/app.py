@@ -68,13 +68,22 @@ def build_parser() -> argparse.ArgumentParser:
     route.add_argument("--repo", default=".")
     route.add_argument("--mode", choices=["local_only", "balanced", "fast", "quality"], default="balanced")
 
-    runtime = sub.add_parser("runtime", help="Inspect, install, or repair the llama.cpp runtime.")
+    runtime = sub.add_parser("runtime", help="Inspect, install, repair, or uninstall the llama.cpp runtime.")
     runtime_sub = runtime.add_subparsers(dest="runtime_action", required=True)
     runtime_sub.add_parser("status", help="Show installed runtime and backend health.")
     runtime_sub.add_parser("verify", help="Verify the installed runtime can load the expected backend.")
     for action in ("install", "repair"):
         command = runtime_sub.add_parser(action)
         command.add_argument("--backend", choices=["auto", "cuda", "cpu", "metal"], default="auto")
+    runtime_sub.add_parser("uninstall", help="Remove llama-cpp-python but keep downloaded models.")
+
+    run_cmd = sub.add_parser("run", help="Run one prompt on the selected installed local model.")
+    run_cmd.add_argument("--prompt", required=True)
+    run_cmd.add_argument("--model", choices=sorted(MODEL_PROFILES))
+    run_cmd.add_argument("--system")
+    run_cmd.add_argument("--max-tokens", type=int, default=256)
+    run_cmd.add_argument("--temperature", type=float, default=0.1)
+    run_cmd.add_argument("--json", action="store_true", dest="json_output")
 
     telemetry = sub.add_parser("telemetry")
     telemetry.add_argument(
@@ -169,6 +178,32 @@ def cli(argv: list[str] | None = None) -> int:
                 return 1
             _print_json(result)
             return 0
+        if args.runtime_action == "uninstall":
+            try:
+                _print_json(uninstall_runtime())
+            except RuntimeError as exc:
+                print(f"Locdex runtime error: {exc}")
+                return 1
+            return 0
+
+    if args.command == "run":
+        try:
+            result = run_prompt(
+                args.prompt,
+                model_key=args.model,
+                system=args.system,
+                max_tokens=args.max_tokens,
+                temperature=args.temperature,
+            )
+        except RuntimeExecutionError as exc:
+            print(f"Locdex inference error: {exc}")
+            return 1
+
+        if args.json_output:
+            _print_json(result)
+        else:
+            print(result["text"])
+        return 0
 
     if args.command == "prepare":
         result = AgentEngine().prepare(
