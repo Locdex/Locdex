@@ -90,6 +90,19 @@ class VerificationEngine:
             return VerificationCheck("tests", "skipped", output=str(result.get("output", "")))
         return self._from_tool_result("tests", result)
 
+    @staticmethod
+    def _repo_uses_ruff(repo_path: str) -> bool:
+        root = Path(repo_path).resolve()
+        if (root / "ruff.toml").is_file() or (root / ".ruff.toml").is_file():
+            return True
+        pyproject = root / "pyproject.toml"
+        if not pyproject.is_file():
+            return False
+        try:
+            return "[tool.ruff" in pyproject.read_text(encoding="utf-8")
+        except OSError:
+            return False
+
     def _lint_python(self, repo_path: str, changed_files: list[str]) -> VerificationCheck:
         python_files = [path for path in changed_files if path.lower().endswith(".py")]
         if not python_files:
@@ -98,9 +111,16 @@ class VerificationEngine:
         if not self.run_lint:
             return VerificationCheck("lint", "skipped", output="Lint verification disabled.")
 
+        if not self._repo_uses_ruff(repo_path):
+            return VerificationCheck(
+                "lint",
+                "skipped",
+                output="Target repository does not declare Ruff configuration.",
+            )
+
         ruff = shutil.which("ruff")
         if not ruff:
-            return VerificationCheck("lint", "skipped", output="Ruff is not installed.")
+            return VerificationCheck("lint", "skipped", output="Ruff is configured but not installed.")
 
         result = run_command(repo_path, [ruff, "check", *python_files], timeout=120)
         return self._from_tool_result("lint", result)
