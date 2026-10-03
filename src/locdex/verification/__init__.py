@@ -1,2 +1,3 @@
-from .engine import VerificationEngine,VerificationResult
-__all__=["VerificationEngine","VerificationResult"]
+from .engine import VerificationCheck, VerificationEngine, VerificationResult
+
+__all__ = ["VerificationCheck", "VerificationEngine", "VerificationResult"]
