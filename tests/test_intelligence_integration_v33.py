@@ -62,5 +62,5 @@ def test_hardened_agent_exposes_read_only_intelligence_tools(tmp_path):
     )
 
     assert symbol["matches"][0]["path"] == "maths.py"
-    assert {item["path"] for item in refs["matches"]} >= {"maths.py", "test_maths.py"}
+    assert {item["path"] for item in refs["matches"]} == {"test_maths.py"}
     assert {item["path"] for item in related["files"]} >= {"maths.py", "test_maths.py"}
