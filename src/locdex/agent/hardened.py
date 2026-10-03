@@ -29,19 +29,32 @@ class _RepairAwareSession:
 
         decision = self.inner.json_completion(messages, schema, **kwargs)
 
+        args = decision.get("args") if isinstance(decision.get("args"), dict) else {}
         signature = json.dumps(
             {
                 "action": decision.get("action"),
                 "tool": decision.get("tool"),
-                "path": (decision.get("args") or {}).get("path")
-                if isinstance(decision.get("args"), dict)
-                else None,
+                "args": args,
             },
             sort_keys=True,
+            ensure_ascii=False,
         )
         self._signature_counts[signature] = self._signature_counts.get(signature, 0) + 1
 
-        if self._signature_counts[signature] >= 2 and str(decision.get("action", "")) == "tool":
+        if (
+            self._signature_counts[signature] >= 2
+            and str(decision.get("action", "")) == "tool"
+        ):
+            path = args.get("path")
+            if isinstance(path, str) and path:
+                return {
+                    "action": "tool",
+                    "tool": "read_file",
+                    "args": {"path": path, "start_line": 1, "end_line": 300},
+                    "summary": "Refresh exact source after a repeated edit attempt.",
+                    "confidence": 1.0,
+                }
+
             retry_messages = list(messages)
             retry_messages.append(
                 {
@@ -53,26 +66,12 @@ class _RepairAwareSession:
                 {
                     "role": "user",
                     "content": (
-                        "Do not repeat the same tool/path strategy. The previous attempt "
-                        "did not make progress. Re-read the current source if necessary, "
-                        "then choose a different exact edit or run validation."
+                        "The exact same tool call has already been attempted. "
+                        "Choose a materially different action or run validation."
                     ),
                 }
             )
             decision = self.inner.json_completion(retry_messages, schema, **kwargs)
-            replacement_signature = json.dumps(
-                {
-                    "action": decision.get("action"),
-                    "tool": decision.get("tool"),
-                    "path": (decision.get("args") or {}).get("path")
-                    if isinstance(decision.get("args"), dict)
-                    else None,
-                },
-                sort_keys=True,
-            )
-            self._signature_counts[replacement_signature] = (
-                self._signature_counts.get(replacement_signature, 0) + 1
-            )
 
         while (
             str(decision.get("action", "")) == "escalate"
@@ -109,6 +108,7 @@ class AgentEngine(BaseAgentEngine):
         super().__init__(model_key=model_key)
         self._repair_required = False
         self._repair_deferrals = 0
+        self._mutations_since_validation = 0
 
     @staticmethod
     def _preexisting_changed_paths(status_result: dict[str, Any]) -> set[str]:
@@ -186,6 +186,12 @@ class AgentEngine(BaseAgentEngine):
                     )
         elif name == "run_tests":
             self._repair_required = guarded.get("ok") is not True
+            self._mutations_since_validation = 0
+        elif (
+            name in WORKSPACE_MUTATING_TOOLS
+            and guarded.get("ok") is True
+        ):
+            self._mutations_since_validation += 1
 
         return guarded
 
