@@ -34,3 +34,16 @@ def test_cli_model_use_smoke():
     args = build_parser().parse_args(["model", "use", "smoke"])
     assert args.model_action == "use"
     assert args.key == "smoke"
+
+
+def test_cli_runtime_uninstall():
+    args = build_parser().parse_args(["runtime", "uninstall"])
+    assert args.command == "runtime"
+    assert args.runtime_action == "uninstall"
+
+
+def test_cli_run_prompt():
+    args = build_parser().parse_args(["run", "--prompt", "hello", "--model", "smoke"])
+    assert args.command == "run"
+    assert args.prompt == "hello"
+    assert args.model == "smoke"
