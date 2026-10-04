@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from ..intelligence import build_repo_map, graph_summary, task_context_text
+from ..intelligence import (
+    build_repo_map,
+    graph_summary,
+    retrieval_plan_text,
+    task_context_text,
+)
 from ..security.secrets import redact_secrets
 from .budget import ContextBudget, estimate_tokens
 from .pack import ContextItem, ContextPack
@@ -25,8 +30,6 @@ class ContextCompiler:
             text, redactions = redact_secrets(text)
             pack.redactions += redactions
 
-        # Conservative char cap for v1; ContextManager performs another
-        # model-specific prompt budget check later.
         text = text[: max(1, token_cap) * 4]
         pack.add(
             ContextItem(
@@ -54,19 +57,26 @@ class ContextCompiler:
         def remaining() -> int:
             return max(0, budget.max_input_tokens - pack.total_tokens)
 
-        # Highest-value context first: relationships and exact task source.
-        graph_budget = min(1400, remaining())
-        if graph_budget:
+        # Deterministic retrieval intent comes first so the model sees what
+        # Locdex has already inferred before it spends a generation planning.
+        plan_budget = min(1100, remaining())
+        if plan_budget:
             self._add_bounded(
                 pack,
                 level="metadata",
-                label="repo_graph",
-                content=graph_summary(repo_path, task, limit=12),
-                token_cap=graph_budget,
+                label="retrieval_plan",
+                content=retrieval_plan_text(
+                    repo_path,
+                    task,
+                    max_files=8,
+                    source_tokens=1800,
+                ),
+                token_cap=plan_budget,
                 cloud=cloud,
             )
 
-        source_budget = min(2200, remaining())
+        # Exact source is more valuable than broad inventory.
+        source_budget = min(1900, remaining())
         if source_budget:
             self._add_bounded(
                 pack,
@@ -82,8 +92,19 @@ class ContextCompiler:
                 cloud=cloud,
             )
 
-        # Broad inventory is useful, but should never crowd out the targeted
-        # graph/source context above.
+        graph_budget = min(1000, remaining())
+        if graph_budget:
+            self._add_bounded(
+                pack,
+                level="metadata",
+                label="repo_graph",
+                content=graph_summary(repo_path, task, limit=12),
+                token_cap=graph_budget,
+                cloud=cloud,
+            )
+
+        # Broad inventory is last and capped so it never crowds out targeted
+        # plan/source context.
         repo = build_repo_map(repo_path)
         summary_lines: list[str] = []
         for row in repo[:200]:
@@ -91,7 +112,7 @@ class ContextCompiler:
             summary_lines.append(f"{row['path']} :: {symbol_text}")
         repo_map = "\n".join(summary_lines)
 
-        map_budget = min(1600, remaining())
+        map_budget = min(1200, remaining())
         if map_budget:
             self._add_bounded(
                 pack,
