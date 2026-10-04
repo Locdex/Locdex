@@ -5,6 +5,7 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from ..security import PermissionController, RiskClass
 from ..tools.executor import run_command, run_tests
 
 
@@ -38,8 +39,39 @@ class VerificationResult:
 
 
 class VerificationEngine:
-    def __init__(self, *, run_lint: bool = True):
+    def __init__(
+        self,
+        *,
+        run_lint: bool = True,
+        permission_controller: PermissionController | None = None,
+    ):
         self.run_lint = run_lint
+        self.permission_controller = permission_controller
+
+    def _permission_denied(
+        self,
+        repo_path: str,
+        *,
+        tool: str,
+        risk: RiskClass,
+        args: dict,
+        check_name: str,
+    ) -> VerificationCheck | None:
+        if self.permission_controller is None:
+            return None
+        decision = self.permission_controller.authorize(
+            repo_path=repo_path,
+            tool=tool,
+            risk=risk,
+            args=args,
+        )
+        if decision.allowed:
+            return None
+        return VerificationCheck(
+            check_name,
+            "failed",
+            output=f"Permission denied: {decision.reason}",
+        )
 
     @staticmethod
     def _changed_existing_files(repo_path: str, changed_files: list[str] | tuple[str, ...]) -> list[str]:
@@ -74,14 +106,33 @@ class VerificationEngine:
         if not python_files:
             return VerificationCheck("compile", "skipped", output="No changed Python files.")
 
+        argv = [sys.executable, "-m", "py_compile", *python_files]
+        denied = self._permission_denied(
+            repo_path,
+            tool="run_command",
+            risk=RiskClass.EXECUTE,
+            args={"argv": argv, "timeout": 120},
+            check_name="compile",
+        )
+        if denied is not None:
+            return denied
         result = run_command(
             repo_path,
-            [sys.executable, "-m", "py_compile", *python_files],
+            argv,
             timeout=120,
         )
         return self._from_tool_result("compile", result)
 
     def _tests(self, repo_path: str) -> VerificationCheck:
+        denied = self._permission_denied(
+            repo_path,
+            tool="run_tests",
+            risk=RiskClass.EXECUTE,
+            args={},
+            check_name="tests",
+        )
+        if denied is not None:
+            return denied
         result = run_tests(repo_path)
         if (
             result.get("returncode") is None
@@ -122,7 +173,17 @@ class VerificationEngine:
         if not ruff:
             return VerificationCheck("lint", "skipped", output="Ruff is configured but not installed.")
 
-        result = run_command(repo_path, [ruff, "check", *python_files], timeout=120)
+        argv = [ruff, "check", *python_files]
+        denied = self._permission_denied(
+            repo_path,
+            tool="run_command",
+            risk=RiskClass.EXECUTE,
+            args={"argv": argv, "timeout": 120},
+            check_name="lint",
+        )
+        if denied is not None:
+            return denied
+        result = run_command(repo_path, argv, timeout=120)
         return self._from_tool_result("lint", result)
 
     def verify(
