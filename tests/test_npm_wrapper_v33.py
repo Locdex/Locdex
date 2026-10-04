@@ -88,9 +88,13 @@ def test_npm_package_can_be_dry_run_packed():
         command = [
             comspec,
             "/d",
-            "/s",
             "/c",
-            f'"{npm}" pack --dry-run --ignore-scripts --json',
+            "call",
+            npm,
+            "pack",
+            "--dry-run",
+            "--ignore-scripts",
+            "--json",
         ]
     else:
         command = [npm, "pack", "--dry-run", "--ignore-scripts", "--json"]
