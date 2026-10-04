@@ -1,0 +1,29 @@
+{
+  "name": "@locdex/cli",
+  "version": "0.3.2-alpha.1",
+  "description": "npm bootstrapper and launcher for the Locdex local-first coding-agent runtime",
+  "license": "MIT",
+  "bin": {
+    "locdex": "bin/locdex.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js",
+    "check": "node --check bin/locdex.js && node --check scripts/runtime.js && node --check scripts/install.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin",
+    "scripts",
+    "README.md"
+  ],
+  "keywords": [
+    "coding-agent",
+    "local-llm",
+    "developer-tools",
+    "qwen",
+    "llama-cpp",
+    "ai-coding"
+  ]
+}
