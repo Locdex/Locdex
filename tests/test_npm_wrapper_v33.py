@@ -83,6 +83,7 @@ def test_npm_package_can_be_dry_run_packed():
     npm = shutil.which("npm")
     assert npm is not None
 
+    npm_args = ["pack", "--dry-run", "--ignore-scripts"]
     if os.name == "nt":
         comspec = os.environ.get("ComSpec") or "cmd.exe"
         command = [
@@ -91,13 +92,10 @@ def test_npm_package_can_be_dry_run_packed():
             "/c",
             "call",
             npm,
-            "pack",
-            "--dry-run",
-            "--ignore-scripts",
-            "--json",
+            *npm_args,
         ]
     else:
-        command = [npm, "pack", "--dry-run", "--ignore-scripts", "--json"]
+        command = [npm, *npm_args]
 
     process = subprocess.run(
         command,
@@ -108,10 +106,13 @@ def test_npm_package_can_be_dry_run_packed():
         timeout=60,
     )
     assert process.returncode == 0, process.stderr
-    payload = json.loads(process.stdout)
-    package = payload[0] if isinstance(payload, list) else payload
-    files = {row["path"] for row in package["files"]}
-    assert "bin/locdex.js" in files
-    assert "scripts/install.js" in files
-    assert "scripts/runtime.js" in files
-    assert "README.md" in files
+
+    # npm's --json output shape varies across npm/platform versions. The
+    # human-readable dry-run output is the stable contract we need here:
+    # verify the package succeeds and includes the files we intend to ship.
+    output = (process.stdout + "\n" + process.stderr).replace("\\", "/")
+    assert "bin/locdex.js" in output
+    assert "scripts/install.js" in output
+    assert "scripts/runtime.js" in output
+    assert "README.md" in output
+
