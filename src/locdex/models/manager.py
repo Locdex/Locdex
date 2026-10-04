@@ -190,6 +190,11 @@ def model_status(key: str) -> dict:
         "recommended_ram_gb": profile.recommended_ram_gb,
         "preferred_context": profile.preferred_context,
         "description": profile.description,
+        "hardware_tier": profile.hardware_tier,
+        "family": profile.family,
+        "tool_call_quality": profile.tool_call_quality,
+        "reasoning_strength": profile.reasoning_strength,
+        "fim": profile.fim,
     }
 
 
