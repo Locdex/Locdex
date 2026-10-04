@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from ..sandbox import sandbox_environment
 from ..security import native_authorize
 from .registry import TOOLS
 
@@ -128,13 +129,15 @@ def _is_text_file(path: Path) -> bool:
     return path.suffix.lower() in TEXT_EXTENSIONS or path.name in SPECIAL_TEXT_FILES
 
 
-def _sanitized_env() -> dict[str, str]:
+def _sanitized_env(sandbox_mode: str | None = None) -> dict[str, str]:
     env = {
         key: value
         for key, value in os.environ.items()
         if not any(marker in key.upper() for marker in SECRET_ENV_MARKERS)
     }
     env["LOCDEX_AGENT"] = "1"
+    if sandbox_mode:
+        env.update(sandbox_environment(sandbox_mode))
     return env
 
 
@@ -153,7 +156,7 @@ def _git(repo_path: str, *args: str, timeout: int = 120) -> subprocess.Completed
             errors="replace",
             timeout=_bounded_timeout(timeout),
             check=False,
-            env=_sanitized_env(),
+            env=_sanitized_env(sandbox_mode),
         )
     except FileNotFoundError as exc:
         raise ToolError("git is not installed or not on PATH.") from exc
@@ -330,6 +333,8 @@ def run_command(
     argv: list[str],
     cwd: str = ".",
     timeout: int = 120,
+    *,
+    sandbox_mode: str | None = None,
 ) -> dict[str, Any]:
     if (
         not isinstance(argv, list)
@@ -398,7 +403,7 @@ def _has_python_tests(repo_path: str) -> bool:
     return False
 
 
-def run_tests(repo_path: str) -> dict[str, Any]:
+def run_tests(repo_path: str, *, sandbox_mode: str | None = None) -> dict[str, Any]:
     root = _root(repo_path)
     python_markers = (
         root / "pytest.ini",
@@ -411,6 +416,7 @@ def run_tests(repo_path: str) -> dict[str, Any]:
             repo_path,
             [sys.executable, "-m", "pytest", "-q"],
             timeout=MAX_COMMAND_SECONDS,
+            sandbox_mode=sandbox_mode,
         )
 
     candidates = [
@@ -420,7 +426,12 @@ def run_tests(repo_path: str) -> dict[str, Any]:
     ]
     for argv, marker in candidates:
         if marker.exists():
-            return run_command(repo_path, argv, timeout=MAX_COMMAND_SECONDS)
+            return run_command(
+                repo_path,
+                argv,
+                timeout=MAX_COMMAND_SECONDS,
+                sandbox_mode=sandbox_mode,
+            )
 
     return {
         "ok": False,
@@ -521,6 +532,7 @@ def execute_tool(
     args: dict[str, Any] | None = None,
     *,
     explicit_user_intent: bool = False,
+    sandbox_mode: str | None = None,
 ) -> dict[str, Any]:
     args = args or {}
     definition = TOOLS.get(name)
@@ -603,9 +615,10 @@ def execute_tool(
             args.get("argv") or [],
             str(args.get("cwd", ".")),
             int(args.get("timeout", 120)),
+            sandbox_mode=sandbox_mode,
         )
     if name == "run_tests":
-        return run_tests(repo_path)
+        return run_tests(repo_path, sandbox_mode=sandbox_mode)
     if name == "git_status":
         return git_status(repo_path)
     if name == "git_diff":
