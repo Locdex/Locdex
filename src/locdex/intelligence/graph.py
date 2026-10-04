@@ -134,12 +134,18 @@ def _raw_imports(tree: ast.Module) -> list[dict[str, Any]]:
     return imports
 
 
-def _resolve_relative_module(current: str, module: str, level: int) -> str:
+def _resolve_relative_module(
+    current: str,
+    module: str,
+    level: int,
+    *,
+    current_is_package: bool = False,
+) -> str:
     if level <= 0:
         return module
-    package = current.split(".")[:-1]
-    keep = max(0, len(package) - (level - 1))
-    prefix = package[:keep]
+    package = current.split(".") if current_is_package else current.split(".")[:-1]
+    ascend = max(0, level - 1)
+    prefix = package[: max(0, len(package) - ascend)]
     if module:
         prefix.extend(module.split("."))
     return ".".join(prefix)
@@ -167,7 +173,12 @@ def build_repository_graph(root: str) -> dict[str, Any]:
         for import_row in _raw_imports(tree):
             raw_module = str(import_row["module"])
             level = int(import_row["level"])
-            resolved_module = _resolve_relative_module(current_module, raw_module, level)
+            resolved_module = _resolve_relative_module(
+                current_module,
+                raw_module,
+                level,
+                current_is_package=rel.endswith("/__init__.py") or rel == "__init__.py",
+            )
             target = module_to_path.get(resolved_module)
             if target is None and resolved_module:
                 prefix = resolved_module
