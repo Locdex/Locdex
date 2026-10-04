@@ -101,6 +101,7 @@ def main() -> int:
             "locdex/telemetry/client.py",
             "locdex/tools/executor.py",
             "locdex/tools/registry.py",
+            "locdex/tools/python_symbols.py",
             "locdex/verification/engine.py",
             "locdex/extensions/enterprise.py",
         }
