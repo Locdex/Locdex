@@ -588,6 +588,7 @@ class AgentEngine(BaseAgentEngine):
         sandbox_mode: str | SandboxMode = SandboxMode.WORKSPACE_WRITE,
         event_bus: EventBus | None = None,
         additional_context: str | None = None,
+        steering_queue: Any | None = None,
     ) -> dict:
         self.event_bus = event_bus
         self._event(
@@ -667,6 +668,7 @@ class AgentEngine(BaseAgentEngine):
             session=guarded_session,
             progress=progress,
             additional_context=additional_context,
+            steering_queue=steering_queue,
         )
 
         attempted_modified = set(result.get("files_modified") or [])
