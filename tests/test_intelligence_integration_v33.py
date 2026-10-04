@@ -21,6 +21,7 @@ def test_context_pack_contains_task_ranked_repo_graph(tmp_path):
     )
 
     labels = {item.label for item in pack.items}
+    assert "retrieval_plan" in labels
     assert "repo_graph" in labels
     graph_text = next(item.content for item in pack.items if item.label == "repo_graph")
     assert "service.py" in graph_text
