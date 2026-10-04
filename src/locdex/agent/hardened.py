@@ -595,6 +595,7 @@ class AgentEngine(BaseAgentEngine):
         permission_controller: PermissionController | None = None,
         sandbox_mode: str | SandboxMode = SandboxMode.WORKSPACE_WRITE,
         event_bus: EventBus | None = None,
+        additional_context: str | None = None,
     ) -> dict:
         self._repair_required = False
         self._repair_deferrals = 0
@@ -663,6 +664,7 @@ class AgentEngine(BaseAgentEngine):
             routing_mode=routing_mode,
             session=guarded_session,
             progress=progress,
+            additional_context=additional_context,
         )
 
         attempted_modified = set(result.get("files_modified") or [])
