@@ -82,14 +82,34 @@ def _references(tree: ast.Module) -> dict[str, list[int]]:
     return {name: sorted(lines) for name, lines in refs.items()}
 
 
-def _raw_imports(tree: ast.Module) -> list[tuple[str, int]]:
-    imports: list[tuple[str, int]] = []
+def _raw_imports(tree: ast.Module) -> list[dict[str, Any]]:
+    imports: list[dict[str, Any]] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                imports.append((alias.name, 0))
+                imports.append(
+                    {
+                        "module": alias.name,
+                        "level": 0,
+                        "names": [],
+                        "alias": alias.asname or "",
+                    }
+                )
         elif isinstance(node, ast.ImportFrom):
-            imports.append((node.module or "", int(node.level or 0)))
+            imports.append(
+                {
+                    "module": node.module or "",
+                    "level": int(node.level or 0),
+                    "names": [
+                        {
+                            "name": alias.name,
+                            "alias": alias.asname or "",
+                        }
+                        for alias in node.names
+                    ],
+                    "alias": "",
+                }
+            )
     return imports
 
 
@@ -122,8 +142,10 @@ def build_repository_graph(root: str) -> dict[str, Any]:
     reverse: dict[str, set[str]] = defaultdict(set)
 
     for rel, (tree, current_module) in parsed.items():
-        imports: list[dict[str, str]] = []
-        for raw_module, level in _raw_imports(tree):
+        imports: list[dict[str, Any]] = []
+        for import_row in _raw_imports(tree):
+            raw_module = str(import_row["module"])
+            level = int(import_row["level"])
             resolved_module = _resolve_relative_module(current_module, raw_module, level)
             target = module_to_path.get(resolved_module)
             if target is None and resolved_module:
@@ -135,6 +157,8 @@ def build_repository_graph(root: str) -> dict[str, Any]:
                 {
                     "module": resolved_module or raw_module,
                     "path": target or "",
+                    "names": list(import_row.get("names") or []),
+                    "alias": str(import_row.get("alias") or ""),
                 }
             )
             if target and target != rel:
