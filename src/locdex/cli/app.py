@@ -240,6 +240,10 @@ def cli(argv: list[str] | None = None) -> int:
             if modified:
                 print("Modified: " + ", ".join(modified))
 
+            rolled_back = result.get("rolled_back_files") or []
+            if rolled_back:
+                print("Rolled back incomplete changes: " + ", ".join(rolled_back))
+
             verification = result.get("verification") or {}
             checks = verification.get("checks") or []
             if checks:
