@@ -72,6 +72,27 @@ def _definitions(tree: ast.Module) -> list[dict[str, Any]]:
     return result
 
 
+def _bindings(tree: ast.Module) -> list[str]:
+    names: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    names.add(target.id)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                names.add(alias.asname or alias.name.split(".", 1)[0])
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name != "*":
+                    names.add(alias.asname or alias.name)
+    return sorted(names)
+
+
 def _references(tree: ast.Module) -> dict[str, list[int]]:
     refs: dict[str, set[int]] = defaultdict(set)
     for node in ast.walk(tree):
@@ -172,6 +193,7 @@ def build_repository_graph(root: str) -> dict[str, Any]:
                 "module": current_module,
                 "is_test": _is_test_file(rel),
                 "definitions": _definitions(tree),
+                "bindings": _bindings(tree),
                 "references": _references(tree),
                 "imports": imports,
             }
