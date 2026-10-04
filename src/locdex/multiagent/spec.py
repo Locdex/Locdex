@@ -8,6 +8,7 @@ from typing import Any
 import yaml
 
 from ..models import MODEL_PROFILES
+from ..security import PermissionMode
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _MODES = {"local_only", "balanced", "fast", "quality"}
@@ -24,6 +25,7 @@ class AgentDefinition:
     model: str
     max_steps: int = 8
     mode: str = "balanced"
+    permission_mode: str = PermissionMode.ASK.value
     write_scope: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
@@ -33,6 +35,7 @@ class AgentDefinition:
             "model": self.model,
             "max_steps": self.max_steps,
             "mode": self.mode,
+            "permission_mode": self.permission_mode,
             "write_scope": list(self.write_scope),
         }
 
@@ -89,6 +92,19 @@ def _definition(raw: dict[str, Any], defaults: dict[str, Any]) -> AgentDefinitio
             f"Agent {name!r} mode must be one of: {', '.join(sorted(_MODES))}"
         )
 
+    permission_mode = str(
+        raw.get(
+            "permission_mode",
+            defaults.get("permission_mode", PermissionMode.ASK.value),
+        )
+    ).strip().lower()
+    permission_choices = {mode.value for mode in PermissionMode}
+    if permission_mode not in permission_choices:
+        raise AgentSpecError(
+            f"Agent {name!r} permission_mode must be one of: "
+            f"{', '.join(sorted(permission_choices))}"
+        )
+
     raw_scope = raw.get("write_scope", defaults.get("write_scope", []))
     if raw_scope is None:
         raw_scope = []
@@ -106,6 +122,7 @@ def _definition(raw: dict[str, Any], defaults: dict[str, Any]) -> AgentDefinitio
         model=model,
         max_steps=max_steps,
         mode=mode,
+        permission_mode=permission_mode,
         write_scope=scope,
     )
 
