@@ -5,10 +5,13 @@ import re
 from pathlib import Path
 from typing import Any
 
-from ..context.budget import estimate_tokens
 from .graph import build_repository_graph, find_references, related_files
 
 _TASK_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
+
+
+def _estimate_tokens(text: str) -> int:
+    return max(1, (len(text) + 3) // 4)
 
 
 def _safe_file(root: str, relative_path: str) -> Path | None:
@@ -158,7 +161,7 @@ def build_task_context(
         if key in seen:
             return True
         content = str(snippet.get("content", ""))
-        tokens = estimate_tokens(content)
+        tokens = _estimate_tokens(content)
         if used_tokens + tokens > budget:
             return False
         seen.add(key)
