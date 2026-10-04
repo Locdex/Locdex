@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import Any
 
 
@@ -10,6 +11,62 @@ IGNORED_STATUS_PARTS = {
     ".mypy_cache",
     ".ruff_cache",
 }
+
+
+_CHANGE_VERBS = (
+    "add",
+    "write",
+    "create",
+    "update",
+    "modify",
+    "change",
+    "fix",
+    "refactor",
+    "rename",
+    "remove",
+    "delete",
+)
+
+
+def is_test_path(path: str) -> bool:
+    normalized = path.replace("\\", "/").lower()
+    name = Path(normalized).name
+    parts = set(Path(normalized).parts)
+    return (
+        name.startswith("test_")
+        or name.endswith("_test.py")
+        or "tests" in parts
+        or "test" in parts
+    )
+
+
+def task_explicitly_allows_test_changes(task: str, path: str | None = None) -> bool:
+    text = " ".join(task.lower().split())
+    verbs = "|".join(_CHANGE_VERBS)
+    patterns = (
+        rf"\b(?:{verbs})\b.{{0,36}}\btests?\b",
+        rf"\btests?\b.{{0,36}}\b(?:{verbs})\b",
+    )
+    if any(re.search(pattern, text) for pattern in patterns):
+        return True
+
+    if path:
+        normalized = path.replace("\\", "/").lower()
+        basename = Path(normalized).name
+        named = normalized in text or basename in text
+        changed = any(re.search(rf"\b{verb}\b", text) for verb in _CHANGE_VERBS)
+        if named and changed:
+            return True
+    return False
+
+
+def task_explicitly_names_change(task: str, path: str) -> bool:
+    text = " ".join(task.lower().split())
+    normalized = path.replace("\\", "/").lower()
+    basename = Path(normalized).name
+    if normalized not in text and basename not in text:
+        return False
+    return any(re.search(rf"\b{verb}\b", text) for verb in _CHANGE_VERBS)
 
 
 def clean_model_result(tool_name: str, result: dict[str, Any]) -> dict[str, Any]:
