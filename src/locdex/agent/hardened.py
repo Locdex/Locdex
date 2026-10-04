@@ -220,14 +220,6 @@ class AgentEngine(BaseAgentEngine):
 
     def __init__(self, model_key: str | None = None):
         super().__init__(model_key=model_key)
-        self.event_bus = event_bus
-        self._event(
-            "agent.started",
-            task=task,
-            model=self.model_key,
-            repo_path=str(Path(repo_path).resolve()),
-            sandbox_mode=str(SandboxMode(sandbox_mode).value),
-        )
         self._repair_required = False
         self._repair_deferrals = 0
         self._mutations_since_validation = 0
@@ -597,6 +589,14 @@ class AgentEngine(BaseAgentEngine):
         event_bus: EventBus | None = None,
         additional_context: str | None = None,
     ) -> dict:
+        self.event_bus = event_bus
+        self._event(
+            "agent.started",
+            task=task,
+            model=self.model_key,
+            repo_path=str(Path(repo_path).resolve()),
+            sandbox_mode=SandboxMode(sandbox_mode).value,
+        )
         self._repair_required = False
         self._repair_deferrals = 0
         self._mutations_since_validation = 0
