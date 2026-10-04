@@ -369,6 +369,7 @@ def cli(argv: list[str] | None = None) -> int:
                     args.repo,
                     parallel=args.parallel,
                     progress=None if args.json_output else print,
+                    approval_callback=None if args.json_output else _interactive_permission,
                 )
                 if args.json_output:
                     _print_json(result)
