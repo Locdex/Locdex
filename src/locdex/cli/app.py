@@ -133,7 +133,9 @@ def _print_model_rows() -> None:
         installed = "installed" if row["installed"] else "not installed"
         print(
             f"{marker} {row['model']}: {row['display_name']} "
-            f"[{row['profile_status']}, {installed}] ~{row['approximate_size_gb']} GB"
+            f"[{row['profile_status']}, {installed}, {row['hardware_tier']}] "
+            f"~{row['approximate_size_gb']} GB | RAM {row['minimum_ram_gb']}+ "
+            f"(recommended {row['recommended_ram_gb']} GB)"
         )
 
 
