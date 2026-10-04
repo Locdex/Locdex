@@ -86,6 +86,16 @@ def test_retrieval_plan_turns_structural_gaps_into_change_surface(tmp_path):
     assert {"multiply", "format_sum", "format_product"} <= set(plan.required_symbols)
     assert any(row["reason"] == "reference:multiply" for row in plan.exact_ranges)
     assert any("multiply is imported" in finding for finding in plan.findings)
+    assert [action["tool"] for action in plan.initial_actions] == [
+        "get_reference_context",
+        "get_reference_context",
+        "read_file",
+        "read_file",
+    ]
+    assert plan.initial_actions[0]["args"]["name"] == "multiply"
+    assert plan.initial_actions[1]["args"]["name"] == "format_sum"
+    assert plan.initial_actions[2]["args"]["path"] == "calculator.py"
+    assert plan.initial_actions[3]["args"]["path"] == "formatter.py"
 
 
 def test_constants_aliases_and_reexports_are_valid_bindings(tmp_path):
