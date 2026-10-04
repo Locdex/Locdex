@@ -4,7 +4,13 @@ from typing import Any
 
 from ..tools import TOOLS
 
-WORKSPACE_MUTATING_TOOLS = {"write_file", "replace_in_file", "delete_path"}
+WORKSPACE_MUTATING_TOOLS = {
+    "write_file",
+    "replace_in_file",
+    "replace_symbol",
+    "insert_after_symbol",
+    "delete_path",
+}
 READ_TOOLS = {"list_files", "read_file", "search_code", "git_status", "git_diff"}
 VALIDATION_TOOLS = {"run_tests", "run_command"}
 GIT_MUTATING_TOOLS = {"git_add", "git_commit", "git_pull", "git_push"}
@@ -98,9 +104,18 @@ def system_prompt(repo_context: str, model_key: str) -> str:
         smoke_note = (
             "\nSMOKE MODEL MODE: Keep each step narrow. Locdex may preload a few likely source/test "
             "files before your first decision. Use that exact source. For a small local bug, do not "
-            "escalate merely because you are uncertain: attempt the smallest concrete edit with "
-            "replace_in_file or write_file, validate it, then finish. Avoid broad rewrites.\n"
-            "Example action shapes: "
+            "escalate merely because you are uncertain: attempt the smallest concrete edit, "
+            "validate it, then finish. For Python functions/classes prefer replace_symbol for an "
+            "existing symbol and insert_after_symbol for a new sibling symbol; use replace_in_file "
+            "for tiny literal edits. Avoid broad rewrites.\n"
+            "Python examples: "
+            "{\"action\":\"tool\",\"tool\":\"insert_after_symbol\",\"args\":"
+            "{\"path\":\"calculator.py\",\"anchor\":\"add\",\"new_source\":"
+            "\"def multiply(a, b):\\n    return a * b\"}}; "
+            "{\"action\":\"tool\",\"tool\":\"replace_symbol\",\"args\":"
+            "{\"path\":\"formatter.py\",\"name\":\"format_product\",\"new_source\":"
+            "\"def format_product(a, b):\\n    return f'product={multiply(a, b)}'\"}}.\n"
+            "Literal edit example: "
             "{\"action\":\"tool\",\"tool\":\"replace_in_file\",\"args\":"
             "{\"path\":\"app.py\",\"old\":\"x = 1\",\"new\":\"x = 2\"}} then "
             "{\"action\":\"tool\",\"tool\":\"run_tests\",\"args\":{}}.\n"
@@ -114,7 +129,7 @@ Available tools:
 Rules:
 1. Inspect relevant code before changing it.
 2. File writes and replacements are real and immediate.
-3. Prefer replace_in_file for small existing-file edits and write_file for new files or full rewrites.
+3. For Python top-level functions/classes, prefer replace_symbol or insert_after_symbol. Use replace_in_file for small literal edits and write_file mainly for new files or intentional full rewrites.
 4. Keep changes tightly scoped to the user's request.
 5. Never access paths outside the workspace or protected internal paths.
 6. run_command accepts argv only. Do not attempt shell wrappers, Git through run_command, privilege escalation, networking, or package installation.
