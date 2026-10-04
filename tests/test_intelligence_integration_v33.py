@@ -53,6 +53,20 @@ def test_hardened_agent_exposes_read_only_intelligence_tools(tmp_path):
         args={"name": "multiply"},
         progress=None,
     )
+    symbol_source = engine._run_tool(
+        repo_path=str(tmp_path),
+        task="inspect multiply",
+        name="get_symbol_source",
+        args={"name": "multiply"},
+        progress=None,
+    )
+    reference_context = engine._run_tool(
+        repo_path=str(tmp_path),
+        task="inspect multiply",
+        name="get_reference_context",
+        args={"name": "multiply", "context_lines": 1},
+        progress=None,
+    )
     related = engine._run_tool(
         repo_path=str(tmp_path),
         task="fix multiply tests",
@@ -63,4 +77,7 @@ def test_hardened_agent_exposes_read_only_intelligence_tools(tmp_path):
 
     assert symbol["matches"][0]["path"] == "maths.py"
     assert {item["path"] for item in refs["matches"]} == {"test_maths.py"}
+    assert "def multiply(a, b):" in symbol_source["matches"][0]["content"]
+    assert "assert multiply(2, 3) == 6" in reference_context["matches"][0]["content"]
     assert {item["path"] for item in related["files"]} >= {"maths.py", "test_maths.py"}
+    assert {"maths.py", "test_maths.py"} <= set(engine.task_state.pinned_files)
