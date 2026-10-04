@@ -156,7 +156,7 @@ def _git(repo_path: str, *args: str, timeout: int = 120) -> subprocess.Completed
             errors="replace",
             timeout=_bounded_timeout(timeout),
             check=False,
-            env=_sanitized_env(sandbox_mode),
+            env=_sanitized_env(),
         )
     except FileNotFoundError as exc:
         raise ToolError("git is not installed or not on PATH.") from exc
@@ -380,7 +380,7 @@ def run_command(
             errors="replace",
             timeout=_bounded_timeout(timeout),
             check=False,
-            env=_sanitized_env(),
+            env=_sanitized_env(sandbox_mode),
         )
     except FileNotFoundError as exc:
         raise ToolError(f"Executable not found: {wrapped_argv[0]}") from exc
