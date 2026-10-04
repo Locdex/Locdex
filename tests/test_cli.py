@@ -122,3 +122,38 @@ def test_cli_task_accepts_permission_modes():
             ]
         )
         assert args.permission_mode == mode
+
+
+def test_cli_task_defaults_to_workspace_write_sandbox():
+    args = build_parser().parse_args(
+        ["task", "--task", "Inspect app.py"]
+    )
+    assert args.sandbox == "workspace-write"
+
+
+def test_cli_task_accepts_sandbox_modes():
+    for mode in ("read-only", "workspace-write", "workspace-network", "unrestricted"):
+        args = build_parser().parse_args(
+            [
+                "task",
+                "--task",
+                "Inspect app.py",
+                "--sandbox",
+                mode,
+            ]
+        )
+        assert args.sandbox == mode
+
+
+def test_cli_sandbox_status():
+    args = build_parser().parse_args(["sandbox", "status"])
+    assert args.command == "sandbox"
+    assert args.sandbox_action == "status"
+
+
+def test_cli_resume_session():
+    args = build_parser().parse_args(
+        ["resume", "abc123", "--repo", "."]
+    )
+    assert args.command == "resume"
+    assert args.session_id == "abc123"
