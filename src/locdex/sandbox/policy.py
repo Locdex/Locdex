@@ -115,6 +115,12 @@ class SandboxPolicy:
                 f"Sandbox mode {self.mode.value!r} blocks network access.",
             )
 
+        if tool in {"git_pull", "git_push"} and not self.profile.network_access:
+            return SandboxDecision(
+                False,
+                f"Sandbox mode {self.mode.value!r} blocks remote Git/network access.",
+            )
+
         if tool == "run_command":
             argv = args.get("argv") or []
             executable = str(argv[0]).lower() if isinstance(argv, list) and argv else ""
