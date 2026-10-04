@@ -36,6 +36,7 @@ class RetrievalPlan:
     required_symbols: list[str] = field(default_factory=list)
     missing_symbols: list[MissingSymbol] = field(default_factory=list)
     exact_ranges: list[dict[str, Any]] = field(default_factory=list)
+    initial_actions: list[dict[str, Any]] = field(default_factory=list)
     related_tests: list[str] = field(default_factory=list)
     likely_change_files: list[str] = field(default_factory=list)
     findings: list[str] = field(default_factory=list)
@@ -46,6 +47,7 @@ class RetrievalPlan:
             "required_symbols": self.required_symbols,
             "missing_symbols": [item.to_dict() for item in self.missing_symbols],
             "exact_ranges": self.exact_ranges,
+            "initial_actions": self.initial_actions,
             "related_tests": self.related_tests,
             "likely_change_files": self.likely_change_files,
             "findings": self.findings,
@@ -76,6 +78,15 @@ class RetrievalPlan:
 
         lines.extend(["", "Likely change files:"])
         lines.extend(f"- {path}" for path in self.likely_change_files or ["(none)"])
+
+        lines.extend(["", "Initial retrieval actions:"])
+        if self.initial_actions:
+            for action in self.initial_actions:
+                lines.append(
+                    f"- {action['tool']} {action.get('args', {})}"
+                )
+        else:
+            lines.append("- (none)")
 
         lines.extend(["", "Related tests:"])
         lines.extend(f"- {path}" for path in self.related_tests or ["(none)"])
@@ -229,11 +240,66 @@ def plan_retrieval(
             f"by {item.requested_by}, but {item.target_path} does not define it."
         )
 
+    initial_actions: list[dict[str, Any]] = []
+    action_keys: set[str] = set()
+    for item in missing[:4]:
+        key = f"reference:{item.name}"
+        if key in action_keys:
+            continue
+        action_keys.add(key)
+        initial_actions.append(
+            {
+                "tool": "get_reference_context",
+                "args": {
+                    "name": item.name,
+                    "context_lines": 2,
+                    "limit": 6,
+                },
+            }
+        )
+
+    for path in likely_change[:4]:
+        key = f"file:{path}"
+        if key in action_keys:
+            continue
+        action_keys.add(key)
+        initial_actions.append(
+            {
+                "tool": "read_file",
+                "args": {
+                    "path": path,
+                    "start_line": 1,
+                    "end_line": 240,
+                },
+            }
+        )
+
+    if not any(action["tool"] == "read_file" for action in initial_actions):
+        for row in ranked:
+            if row.get("is_test"):
+                continue
+            path = str(row.get("path", ""))
+            if not path:
+                continue
+            initial_actions.append(
+                {
+                    "tool": "read_file",
+                    "args": {
+                        "path": path,
+                        "start_line": 1,
+                        "end_line": 200,
+                    },
+                }
+            )
+            if sum(action["tool"] == "read_file" for action in initial_actions) >= 3:
+                break
+
     return RetrievalPlan(
         primary_files=ranked,
         required_symbols=required_symbols,
         missing_symbols=missing,
         exact_ranges=exact_ranges,
+        initial_actions=initial_actions,
         related_tests=related_tests,
         likely_change_files=likely_change,
         findings=findings,
