@@ -274,6 +274,7 @@ class AgentEngine:
         routing_mode: str = "balanced",
         session: Any | None = None,
         progress: ProgressCallback | None = None,
+        additional_context: str | None = None,
     ) -> dict:
         prepared = self.prepare(
             task,
@@ -309,6 +310,18 @@ class AgentEngine:
                 {
                     "role": "user",
                     "content": project_instructions,
+                }
+            )
+        if additional_context and additional_context.strip():
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "SESSION CONTEXT\n"
+                        "Use this prior-session context when relevant. Current user instructions "
+                        "and repository state take precedence.\n\n"
+                        + additional_context.strip()
+                    ),
                 }
             )
         messages.append({"role": "user", "content": task})
