@@ -70,7 +70,95 @@ class _RepairAwareSession:
 
         decision = self.inner.json_completion(messages, schema, **kwargs)
 
-        args = decision.get("args") if isinstance(decision.get("args"), dict) else {}
+        for guard_round in range(3):
+            args = (
+                decision.get("args")
+                if isinstance(decision.get("args"), dict)
+                else {}
+            )
+            action = str(decision.get("action", ""))
+            tool = str(decision.get("tool", ""))
+            path = args.get("path")
+
+            preloaded_paths = set(getattr(self.engine, "_preloaded_paths", set()))
+            unchanged_preloaded_read = (
+                action == "tool"
+                and tool == "read_file"
+                and isinstance(path, str)
+                and path in preloaded_paths
+                and path not in set(self.engine.task_state.modified_files)
+            )
+
+            signature = json.dumps(
+                {
+                    "action": decision.get("action"),
+                    "tool": decision.get("tool"),
+                    "args": args,
+                },
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+            self._signature_counts[signature] = (
+                self._signature_counts.get(signature, 0) + 1
+            )
+            repeated = (
+                action == "tool"
+                and self._signature_counts[signature] >= 2
+            )
+
+            if not unchanged_preloaded_read and not repeated:
+                break
+
+            if guard_round >= 2:
+                return {
+                    "action": "escalate",
+                    "reason": (
+                        "Local model could not make progress after fresh deterministic "
+                        "retrieval and bounded edit re-planning."
+                    ),
+                    "confidence": 0.1,
+                }
+
+            retry_messages = list(messages)
+            retry_messages.append(
+                {
+                    "role": "assistant",
+                    "content": json.dumps(decision, ensure_ascii=False),
+                }
+            )
+
+            if unchanged_preloaded_read:
+                instruction = (
+                    f"{path} was retrieved immediately before this decision and has not "
+                    "changed. Do not read it again. Make the smallest concrete mutation "
+                    "or validate. For Python functions/classes prefer replace_symbol for "
+                    "an existing symbol and insert_after_symbol for a missing sibling."
+                )
+            else:
+                instruction = (
+                    "The exact same tool call has already failed to make progress. "
+                    "Do not repeat it and do not reread unchanged source. Switch to a "
+                    "materially different edit. For Python functions/classes prefer "
+                    "replace_symbol or insert_after_symbol, then validate."
+                )
+
+            retry_messages.append(
+                {
+                    "role": "user",
+                    "content": instruction,
+                }
+            )
+            decision = self.inner.json_completion(
+                retry_messages,
+                schema,
+                **kwargs,
+            )
+
+        args = (
+            decision.get("args")
+            if isinstance(decision.get("args"), dict)
+            else {}
+        )
         action = str(decision.get("action", ""))
         tool = str(decision.get("tool", ""))
         path = args.get("path")
@@ -84,48 +172,6 @@ class _RepairAwareSession:
             self.engine.task_state.add_decision("model requested final")
         elif action == "escalate":
             self.engine.task_state.add_decision("model requested escalation")
-        signature = json.dumps(
-            {
-                "action": decision.get("action"),
-                "tool": decision.get("tool"),
-                "args": args,
-            },
-            sort_keys=True,
-            ensure_ascii=False,
-        )
-        self._signature_counts[signature] = self._signature_counts.get(signature, 0) + 1
-
-        if (
-            self._signature_counts[signature] >= 2
-            and str(decision.get("action", "")) == "tool"
-        ):
-            path = args.get("path")
-            if isinstance(path, str) and path:
-                return {
-                    "action": "tool",
-                    "tool": "read_file",
-                    "args": {"path": path, "start_line": 1, "end_line": 300},
-                    "summary": "Refresh exact source after a repeated edit attempt.",
-                    "confidence": 1.0,
-                }
-
-            retry_messages = list(messages)
-            retry_messages.append(
-                {
-                    "role": "assistant",
-                    "content": json.dumps(decision, ensure_ascii=False),
-                }
-            )
-            retry_messages.append(
-                {
-                    "role": "user",
-                    "content": (
-                        "The exact same tool call has already been attempted. "
-                        "Choose a materially different action or run validation."
-                    ),
-                }
-            )
-            decision = self.inner.json_completion(retry_messages, schema, **kwargs)
 
         while (
             str(decision.get("action", "")) == "escalate"
