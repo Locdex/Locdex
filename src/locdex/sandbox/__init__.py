@@ -9,6 +9,7 @@ from .runner import (
     SandboxCapabilities,
     detect_sandbox_capabilities,
     sandbox_environment,
+    wrap_command,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "detect_sandbox_capabilities",
     "profile_for_mode",
     "sandbox_environment",
+    "wrap_command",
 ]
