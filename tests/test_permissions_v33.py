@@ -164,3 +164,26 @@ def test_replace_symbol_preview_shows_before_and_after(tmp_path):
 
     assert "-    return 1" in preview
     assert "+    return 2" in preview
+
+
+def test_plan_mode_blocks_structured_verification_execution(tmp_path):
+    from locdex.verification import VerificationEngine
+
+    target = tmp_path / "app.py"
+    target.write_text("VALUE = 1\n", encoding="utf-8")
+    (tmp_path / "test_app.py").write_text(
+        "def test_value():\n    assert 1 == 1\n",
+        encoding="utf-8",
+    )
+
+    verifier = VerificationEngine(
+        permission_controller=PermissionController(PermissionMode.PLAN)
+    )
+    result = verifier.verify(str(tmp_path), ["app.py"])
+
+    checks = {check.name: check for check in result.checks}
+    assert result.passed is False
+    assert checks["compile"].status == "failed"
+    assert "Permission denied" in checks["compile"].output
+    assert checks["tests"].status == "failed"
+    assert "Permission denied" in checks["tests"].output
