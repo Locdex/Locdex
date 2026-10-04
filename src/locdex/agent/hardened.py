@@ -16,6 +16,8 @@ from ..intelligence import (
 )
 from ..models import get_model_profile
 from ..runtime import LlamaCppSession, detect_hardware
+from ..security import PermissionController
+from ..tools import TOOLS
 from ..task_state import TaskState
 from .change_journal import ChangeJournal
 from .engine import AgentEngine as BaseAgentEngine
@@ -272,6 +274,28 @@ class AgentEngine(BaseAgentEngine):
         args: dict[str, Any],
         progress,
     ) -> dict[str, Any]:
+        permission_controller = getattr(self, "permission_controller", None)
+        definition = TOOLS.get(name)
+        if permission_controller is not None and definition is not None:
+            decision = permission_controller.authorize(
+                repo_path=repo_path,
+                tool=name,
+                risk=definition.risk,
+                args=args,
+            )
+            if not decision.allowed:
+                self.task_state.add_decision(f"permission denied for {name}")
+                self.task_state.set_next_action(
+                    f"replan without denied tool {name}"
+                )
+                self._emit(progress, f"[Permission] denied {name}")
+                return {
+                    "error": decision.reason,
+                    "permission_denied": True,
+                    "tool": name,
+                    "risk": definition.risk.value,
+                }
+
         if name == "find_symbol":
             self._emit(progress, "[Agent] find_symbol")
             symbol = str(args.get("name", "")).strip()
@@ -512,10 +536,12 @@ class AgentEngine(BaseAgentEngine):
         session: Any | None = None,
         progress=None,
         write_scope: list[str] | None = None,
+        permission_controller: PermissionController | None = None,
     ) -> dict:
         self._repair_required = False
         self._repair_deferrals = 0
         self._mutations_since_validation = 0
+        self.permission_controller = permission_controller
         self._write_scope = [
             str(pattern).replace("\\", "/")
             for pattern in (write_scope or [])
