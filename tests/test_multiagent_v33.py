@@ -120,6 +120,7 @@ def test_supervisor_uses_isolated_worktrees_and_user_scopes(tmp_path, monkeypatc
             write_scope,
             progress,
             permission_controller,
+            sandbox_mode,
         ):
             calls.append(
                 {
@@ -130,6 +131,7 @@ def test_supervisor_uses_isolated_worktrees_and_user_scopes(tmp_path, monkeypatc
                     "mode": routing_mode,
                     "write_scope": write_scope,
                     "permission_mode": permission_controller.mode.value,
+                    "sandbox_mode": sandbox_mode,
                 }
             )
             return {
@@ -151,6 +153,7 @@ def test_supervisor_uses_isolated_worktrees_and_user_scopes(tmp_path, monkeypatc
                     "model": "qwen25-7b",
                     "write_scope": ["src/backend/**"],
                     "permission_mode": "auto-edit",
+                    "sandbox_mode": "workspace-write",
                 },
                 {
                     "name": "frontend",
@@ -158,6 +161,7 @@ def test_supervisor_uses_isolated_worktrees_and_user_scopes(tmp_path, monkeypatc
                     "model": "qwen25-3b",
                     "write_scope": ["src/frontend/**"],
                     "permission_mode": "auto-edit",
+                    "sandbox_mode": "workspace-write",
                 },
             ]
         }
@@ -179,8 +183,10 @@ def test_supervisor_uses_isolated_worktrees_and_user_scopes(tmp_path, monkeypatc
     by_task = {call["task"]: call for call in calls}
     assert by_task["Implement backend change."]["write_scope"] == ["src/backend/**"]
     assert by_task["Implement backend change."]["permission_mode"] == "auto-edit"
+    assert by_task["Implement backend change."]["sandbox_mode"] == "workspace-write"
     assert by_task["Implement frontend change."]["write_scope"] == ["src/frontend/**"]
     assert by_task["Implement frontend change."]["permission_mode"] == "auto-edit"
+    assert by_task["Implement frontend change."]["sandbox_mode"] == "workspace-write"
 
 
 def test_supervisor_requires_installed_models(tmp_path, monkeypatch):
