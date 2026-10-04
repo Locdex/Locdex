@@ -275,6 +275,7 @@ class AgentEngine:
         session: Any | None = None,
         progress: ProgressCallback | None = None,
         additional_context: str | None = None,
+        steering_queue: Any | None = None,
     ) -> dict:
         prepared = self.prepare(
             task,
@@ -474,6 +475,40 @@ class AgentEngine:
         step_cap = max(1, min(int(max_steps), 20))
         for step in range(1, step_cap + 1):
             state.attempts = step
+
+            if steering_queue is not None:
+                if bool(getattr(steering_queue, "cancelled", False)):
+                    state.phase = "cancelled"
+                    return {
+                        "status": "cancelled",
+                        "model": self.model_key,
+                        "summary": "Agent cancelled by user.",
+                        "confidence": 0.0,
+                        "steps": step - 1,
+                        "files_read": sorted(state.files_read),
+                        "files_modified": sorted(state.files_modified),
+                        "verification": state.verification,
+                        "verification_attempts": state.verification_attempts,
+                        "preexisting_changes": sorted(state.preexisting_changes),
+                        "failures": list(state.failures),
+                        "tool_calls": tool_calls,
+                    }
+                drain = getattr(steering_queue, "drain", None)
+                if callable(drain):
+                    updates = [str(item).strip() for item in drain() if str(item).strip()]
+                    for update in updates:
+                        messages.append(
+                            {
+                                "role": "user",
+                                "content": (
+                                    "USER STEERING UPDATE\n"
+                                    "Apply this new constraint/instruction to the active task. "
+                                    "Do not discard already-valid evidence unless it conflicts.\n\n"
+                                    + update
+                                ),
+                            }
+                        )
+
             self._emit(
                 progress,
                 f"[Agent] Step {step}/{step_cap}: choosing next action...",
