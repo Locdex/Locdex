@@ -97,9 +97,14 @@ class RetrievalPlan:
 
 def detect_missing_local_imports(root: str) -> list[MissingSymbol]:
     graph = build_repository_graph(root)
-    definitions = {
-        row["path"]: {item["name"] for item in row["definitions"]}
+    bindings = {
+        row["path"]: set(row.get("bindings") or [])
         for row in graph["files"]
+    }
+    module_paths = {
+        str(row["module"]): str(row["path"])
+        for row in graph["files"]
+        if row.get("module")
     }
 
     missing: list[MissingSymbol] = []
@@ -109,12 +114,15 @@ def detect_missing_local_imports(root: str) -> list[MissingSymbol]:
             target_path = str(import_row.get("path") or "")
             if not target_path:
                 continue
-            target_definitions = definitions.get(target_path, set())
+            target_bindings = bindings.get(target_path, set())
+            target_module = str(import_row.get("module") or "")
             for imported in import_row.get("names") or []:
                 name = str(imported.get("name") or "")
                 if not name or name == "*":
                     continue
-                if name in target_definitions:
+                if name in target_bindings:
+                    continue
+                if target_module and f"{target_module}.{name}" in module_paths:
                     continue
                 key = (row["path"], target_path, name)
                 if key in seen:
