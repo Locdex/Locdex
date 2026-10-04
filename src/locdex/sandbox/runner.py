@@ -4,6 +4,7 @@ import os
 import platform
 import shutil
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from .policy import SandboxMode, profile_for_mode
@@ -53,23 +54,16 @@ def detect_sandbox_capabilities() -> SandboxCapabilities:
         )
 
     if system == "darwin":
-        sandbox_exec = shutil.which("sandbox-exec")
-        if sandbox_exec:
-            return SandboxCapabilities(
-                platform=system,
-                backend="sandbox-exec",
-                os_isolation=True,
-                network_isolation=True,
-                filesystem_isolation=True,
-                reason="sandbox-exec is available for process isolation.",
-            )
         return SandboxCapabilities(
             platform=system,
             backend="logical",
             os_isolation=False,
             network_isolation=False,
             filesystem_isolation=False,
-            reason="No supported macOS OS sandbox backend was detected.",
+            reason=(
+                "macOS v1 keeps Locdex policy enforcement active. "
+                "A hardened process sandbox backend is not enabled yet."
+            ),
         )
 
     if system == "windows":
@@ -119,3 +113,51 @@ def sandbox_environment(mode: str | SandboxMode) -> dict[str, str]:
         )
 
     return env
+
+
+def wrap_command(
+    repo_path: str,
+    cwd: str,
+    argv: list[str],
+    mode: str | SandboxMode,
+) -> tuple[list[str], str]:
+    profile = profile_for_mode(mode)
+    capabilities = detect_sandbox_capabilities()
+
+    if profile.mode is SandboxMode.UNRESTRICTED:
+        return list(argv), capabilities.backend
+
+    if capabilities.backend != "bubblewrap":
+        return list(argv), capabilities.backend
+
+    root = Path(repo_path).resolve()
+    working = Path(cwd).resolve()
+    try:
+        working.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("Sandbox cwd must remain inside the workspace.") from exc
+
+    command = [
+        "bwrap",
+        "--die-with-parent",
+        "--new-session",
+        "--ro-bind",
+        "/",
+        "/",
+        "--dev",
+        "/dev",
+        "--proc",
+        "/proc",
+        "--tmpfs",
+        "/tmp",
+    ]
+
+    if profile.workspace_write:
+        command.extend(["--bind", str(root), str(root)])
+
+    if not profile.network_access:
+        command.append("--unshare-net")
+
+    command.extend(["--chdir", str(working), "--"])
+    command.extend(argv)
+    return command, "bubblewrap"
