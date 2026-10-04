@@ -27,9 +27,9 @@ Locdex exposes a local model catalog across hardware tiers. `locdex model list` 
 
 - `smoke` — Qwen2.5-Coder 1.5B Q4_K_M, development-only runtime/agent smoke profile.
 - `qwen25-3b` — Qwen2.5-Coder 3B Q4_K_M, experimental, 8 GB-class target.
-- `qwen25-7b` — Qwen2.5-Coder 7B Q4_K_M, supported, 8–12 GB-class target.
+- `qwen25-7b` — Qwen2.5-Coder 7B Q4_K_M, qualification candidate, 8–12 GB-class target.
 - `kimi` — Qwen3.5 9B Kimi-K3 Distilled Q4_K_M, experimental, 16 GB-class target.
-- `qwen25-14b` — Qwen2.5-Coder 14B Q4_K_M, supported, 16 GB-class target.
+- `qwen25-14b` — Qwen2.5-Coder 14B Q4_K_M, qualification candidate, 16 GB-class target.
 - `deepseek-lite` — DeepSeek-Coder-V2-Lite Instruct Q4_K_M, experimental, 16–20 GB-class target.
 - `qwen3-coder` — Qwen3-Coder 30B-A3B Instruct Q4_K_M, experimental, 24–32 GB-class target.
 - `qwen` — Qwen3.5 35B-A3B Q4_K_S, supported/default, 32 GB-class target.
