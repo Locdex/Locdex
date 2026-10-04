@@ -93,6 +93,34 @@ def _validate_updated(path: Path, content: str) -> None:
         ) from exc
 
 
+def _single_symbol_block(source: str) -> tuple[str, str]:
+    block = _normalize_block(source)
+    try:
+        tree = ast.parse(block)
+    except SyntaxError as exc:
+        location = f"line {exc.lineno}" if exc.lineno else "unknown line"
+        raise ToolError(
+            f"Refusing invalid Python symbol edit: {exc.msg} ({location})"
+        ) from exc
+
+    if len(tree.body) != 1 or not isinstance(
+        tree.body[0],
+        (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
+    ):
+        raise ToolError(
+            "Symbol mutation source must contain exactly one top-level function or class."
+        )
+    return str(tree.body[0].name), block
+
+
+def _top_level_symbol_names(tree: ast.Module) -> set[str]:
+    return {
+        str(node.name)
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    }
+
+
 def replace_symbol(
     repo_path: str,
     path: str,
@@ -106,7 +134,13 @@ def replace_symbol(
     lines = source.splitlines(keepends=True)
     start = _node_start(node)
     end = int(getattr(node, "end_lineno", getattr(node, "lineno", start)) or start)
-    replacement = _normalize_block(new_source) + "\n"
+    replacement_name, replacement_block = _single_symbol_block(new_source)
+    if replacement_name != name:
+        raise ToolError(
+            f"replace_symbol must preserve symbol name {name!r}; "
+            f"replacement defines {replacement_name!r}."
+        )
+    replacement = replacement_block + "\n"
 
     updated = "".join(lines[: start - 1]) + replacement + "".join(lines[end:])
     _validate_updated(target, updated)
@@ -134,7 +168,12 @@ def insert_after_symbol(
 
     lines = source.splitlines(keepends=True)
     end = int(getattr(node, "end_lineno", getattr(node, "lineno", 1)) or 1)
-    block = _normalize_block(new_source)
+    inserted_name, block = _single_symbol_block(new_source)
+    existing_symbols = _top_level_symbol_names(tree)
+    if inserted_name in existing_symbols:
+        raise ToolError(
+            f"Refusing duplicate top-level Python symbol: {inserted_name}"
+        )
 
     prefix = "".join(lines[:end])
     suffix = "".join(lines[end:])
