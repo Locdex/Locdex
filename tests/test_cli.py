@@ -57,3 +57,29 @@ def test_cli_task_command():
     assert args.task == "change x"
     assert args.model == "smoke"
     assert args.max_steps == 4
+
+
+def test_cli_agents_validate():
+    args = build_parser().parse_args(
+        ["agents", "validate", "--config", "agents.yaml"]
+    )
+    assert args.command == "agents"
+    assert args.agents_action == "validate"
+    assert args.config == "agents.yaml"
+
+
+def test_cli_agents_run_parallel():
+    args = build_parser().parse_args(
+        [
+            "agents",
+            "run",
+            "--config",
+            "agents.yaml",
+            "--repo",
+            ".",
+            "--parallel",
+            "3",
+        ]
+    )
+    assert args.agents_action == "run"
+    assert args.parallel == 3
