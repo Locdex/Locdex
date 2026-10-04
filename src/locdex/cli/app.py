@@ -17,6 +17,12 @@ from ..models import (
     selected_model_key,
 )
 from ..qualification import qualify_model
+from ..security import (
+    ApprovalChoice,
+    PermissionController,
+    PermissionMode,
+    PermissionRequest,
+)
 from ..routing import LearnedRouter, RoutingPolicy, RoutingSession, local_candidates, profile_task
 from ..routing.updater import status as router_status, update_from_manifest
 from ..runtime import (
@@ -105,6 +111,15 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["local_only", "balanced", "fast", "quality"],
         default="balanced",
     )
+    task_cmd.add_argument(
+        "--permission-mode",
+        choices=[mode.value for mode in PermissionMode],
+        default=PermissionMode.ASK.value,
+        help=(
+            "Tool approval policy: plan, ask (default), auto-edit, trusted, "
+            "or unrestricted."
+        ),
+    )
     task_cmd.add_argument("--json", action="store_true", dest="json_output")
 
     agents_cmd = sub.add_parser("agents", help="Run user-defined agents in isolated Git worktrees.")
@@ -157,6 +172,40 @@ def _print_model_rows() -> None:
             f"~{row['approximate_size_gb']} GB | RAM {row['minimum_ram_gb']}+ "
             f"(recommended {row['recommended_ram_gb']} GB)"
         )
+
+
+def _interactive_permission(request: PermissionRequest) -> ApprovalChoice:
+    print()
+    print("=" * 72)
+    print(f"Permission required: {request.risk.value} | {request.tool}")
+    print("-" * 72)
+    print(request.preview)
+    print("-" * 72)
+    print("[y] allow once   [a] allow similar actions this session   [n] deny")
+
+    while True:
+        try:
+            choice = input("Choice [y/a/N]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return ApprovalChoice.DENY
+
+        if choice in {"y", "yes"}:
+            return ApprovalChoice.ALLOW_ONCE
+        if choice in {"a", "always", "session"}:
+            return ApprovalChoice.ALLOW_SESSION
+        if choice in {"", "n", "no", "deny"}:
+            return ApprovalChoice.DENY
+        print("Enter y, a, or n.")
+
+
+def _permission_controller(
+    mode: str,
+    *,
+    interactive: bool,
+) -> PermissionController:
+    callback = _interactive_permission if interactive and mode == PermissionMode.ASK.value else None
+    return PermissionController(mode, approval_callback=callback)
 
 
 def cli(argv: list[str] | None = None) -> int:
@@ -249,6 +298,17 @@ def cli(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "task":
+        if args.json_output and args.permission_mode == PermissionMode.ASK.value:
+            print(
+                "Locdex permission error: --json cannot use interactive 'ask' mode. "
+                "Choose --permission-mode plan, auto-edit, trusted, or unrestricted."
+            )
+            return 1
+
+        permission_controller = _permission_controller(
+            args.permission_mode,
+            interactive=not args.json_output,
+        )
         engine = AgentEngine(model_key=args.model)
         try:
             result = engine.execute(
@@ -257,6 +317,7 @@ def cli(argv: list[str] | None = None) -> int:
                 max_steps=args.max_steps,
                 routing_mode=args.mode,
                 progress=None if args.json_output else print,
+                permission_controller=permission_controller,
             )
         except RuntimeExecutionError as exc:
             print(f"Locdex agent error: {exc}")
