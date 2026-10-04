@@ -18,6 +18,7 @@ from ..models import (
     selected_model_key,
 )
 from ..qualification import qualify_model
+from ..sandbox import SandboxMode, detect_sandbox_capabilities, profile_for_mode
 from ..security import (
     ApprovalChoice,
     PermissionController,
@@ -88,6 +89,11 @@ def build_parser() -> argparse.ArgumentParser:
     route.add_argument("--repo", default=".")
     route.add_argument("--mode", choices=["local_only", "balanced", "fast", "quality"], default="balanced")
 
+    sandbox_cmd = sub.add_parser("sandbox", help="Inspect Locdex sandbox capabilities and modes.")
+    sandbox_sub = sandbox_cmd.add_subparsers(dest="sandbox_action", required=True)
+    sandbox_sub.add_parser("status", help="Show sandbox backend/isolation capabilities.")
+    sandbox_sub.add_parser("modes", help="List built-in sandbox modes.")
+
     runtime = sub.add_parser("runtime", help="Inspect, install, repair, or uninstall the llama.cpp runtime.")
     runtime_sub = runtime.add_subparsers(dest="runtime_action", required=True)
     runtime_sub.add_parser("status", help="Show installed runtime and backend health.")
@@ -114,6 +120,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--mode",
         choices=["local_only", "balanced", "fast", "quality"],
         default="balanced",
+    )
+    task_cmd.add_argument(
+        "--sandbox",
+        choices=[mode.value for mode in SandboxMode],
+        default=SandboxMode.WORKSPACE_WRITE.value,
+        help="Execution sandbox: read-only, workspace-write, workspace-network, or unrestricted.",
     )
     task_cmd.add_argument(
         "--permission-mode",
@@ -261,6 +273,20 @@ def cli(argv: list[str] | None = None) -> int:
             print(f"Locdex model error: {exc}")
             return 1
 
+    if args.command == "sandbox":
+        if args.sandbox_action == "status":
+            caps = detect_sandbox_capabilities()
+            _print_json(caps.to_dict())
+            return 0
+        if args.sandbox_action == "modes":
+            _print_json(
+                {
+                    mode.value: profile_for_mode(mode).to_dict()
+                    for mode in SandboxMode
+                }
+            )
+            return 0
+
     if args.command == "runtime":
         if args.runtime_action == "status":
             _print_json(runtime_status().to_dict())
@@ -328,6 +354,7 @@ def cli(argv: list[str] | None = None) -> int:
                 routing_mode=args.mode,
                 progress=None if args.json_output else print,
                 permission_controller=permission_controller,
+                sandbox_mode=args.sandbox,
             )
         except RuntimeExecutionError as exc:
             print(f"Locdex agent error: {exc}")
