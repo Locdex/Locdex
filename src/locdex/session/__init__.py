@@ -1,3 +1,4 @@
+from .steering import SteeringQueue
 from .changeset import ChangeSet
 from .checkpoints import (
     Checkpoint,
@@ -12,6 +13,7 @@ __all__ = [
     "ChangeSet",
     "Checkpoint",
     "SessionState",
+    "SteeringQueue",
     "SessionTask",
     "create_checkpoint",
     "list_checkpoints",
