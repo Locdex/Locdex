@@ -23,6 +23,8 @@ TOOLS = {
     "related_files": ToolDefinition("related_files", RiskClass.READ, "Rank files related to the current task using symbols/imports/tests."),
     "write_file": ToolDefinition("write_file", RiskClass.WRITE, "Create or replace a workspace text file."),
     "replace_in_file": ToolDefinition("replace_in_file", RiskClass.WRITE, "Replace exact text in a workspace file."),
+    "replace_symbol": ToolDefinition("replace_symbol", RiskClass.WRITE, "Replace one top-level Python function/class by symbol name using syntax-checked source."),
+    "insert_after_symbol": ToolDefinition("insert_after_symbol", RiskClass.WRITE, "Insert syntax-checked Python source after a named top-level function/class."),
     "delete_path": ToolDefinition("delete_path", RiskClass.WRITE, "Delete a file or empty directory."),
     "run_command": ToolDefinition("run_command", RiskClass.EXECUTE, "Run a bounded argv development command."),
     "run_tests": ToolDefinition("run_tests", RiskClass.EXECUTE, "Run the detected project test suite."),
