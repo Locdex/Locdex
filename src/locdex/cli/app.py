@@ -5,6 +5,7 @@ import json
 
 from .. import __version__
 from ..agent import AgentEngine
+from ..multiagent import AgentSpecError, MultiAgentError, WorktreeError, load_agent_spec, run_agents
 from ..models import (
     MODEL_PROFILES,
     ModelInstallError,
@@ -96,6 +97,16 @@ def build_parser() -> argparse.ArgumentParser:
         default="balanced",
     )
     task_cmd.add_argument("--json", action="store_true", dest="json_output")
+
+    agents_cmd = sub.add_parser("agents", help="Run user-defined agents in isolated Git worktrees.")
+    agents_sub = agents_cmd.add_subparsers(dest="agents_action", required=True)
+    agents_validate = agents_sub.add_parser("validate", help="Validate an agent YAML config.")
+    agents_validate.add_argument("--config", required=True)
+    agents_run = agents_sub.add_parser("run", help="Run agents from a YAML config.")
+    agents_run.add_argument("--config", required=True)
+    agents_run.add_argument("--repo", default=".")
+    agents_run.add_argument("--parallel", type=int, default=1)
+    agents_run.add_argument("--json", action="store_true", dest="json_output")
 
     telemetry = sub.add_parser("telemetry")
     telemetry.add_argument(
@@ -265,6 +276,42 @@ def cli(argv: list[str] | None = None) -> int:
                 f"{result.get('verification_attempts', 0)}"
             )
         return 0 if result["status"] == "completed" else 1
+
+    if args.command == "agents":
+        try:
+            spec = load_agent_spec(args.config)
+            if args.agents_action == "validate":
+                _print_json(spec.to_dict())
+                return 0
+
+            if args.agents_action == "run":
+                result = run_agents(
+                    spec,
+                    args.repo,
+                    parallel=args.parallel,
+                    progress=None if args.json_output else print,
+                )
+                if args.json_output:
+                    _print_json(result)
+                else:
+                    print()
+                    print(
+                        f"Multi-agent run {result['run_id']}: "
+                        f"{result['agents_completed']}/{result['agents_total']} completed"
+                    )
+                    for row in result["agents"]:
+                        agent_result = row["result"]
+                        workspace = row["workspace"]
+                        print(
+                            f"- {row['name']}: {agent_result.get('status')} | "
+                            f"model={row['model']} | branch={workspace['branch']}"
+                        )
+                        print(f"  workspace: {workspace['path']}")
+                    print("No agent changes were auto-committed or auto-merged.")
+                return 0 if result["agents_completed"] == result["agents_total"] else 1
+        except (AgentSpecError, MultiAgentError, WorktreeError, ValueError) as exc:
+            print(f"Locdex multi-agent error: {exc}")
+            return 1
 
     if args.command == "prepare":
         result = AgentEngine().prepare(
