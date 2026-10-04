@@ -125,7 +125,8 @@ Rules:
 11. Preserve unrelated pre-existing user changes and prefer exact replacements over whole-file rewrites on already-dirty files.
 12. Do not claim an edit/test happened unless a tool result proves it.
 13. If the task genuinely cannot be completed locally after inspection and a concrete attempt, use action "escalate".
-14. When complete, use action "final" with a concise summary.
+14. Locdex may perform deterministic repository retrieval before your first decision. Use that evidence; do not repeat the same retrieval unless source may be stale or more exact context is needed.
+15. When complete, use action "final" with a concise summary.
 
 Return exactly one schema-valid JSON object per turn.
 
