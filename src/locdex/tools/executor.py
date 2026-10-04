@@ -569,6 +569,30 @@ def execute_tool(
             str(args["new"]),
             int(args.get("count", 1)),
         )
+    if name == "replace_symbol":
+        for required in ("path", "name", "new_source"):
+            if required not in args:
+                raise ToolError(f"replace_symbol requires {required}")
+        from .python_symbols import replace_symbol
+
+        return replace_symbol(
+            repo_path,
+            str(args["path"]),
+            str(args["name"]),
+            str(args["new_source"]),
+        )
+    if name == "insert_after_symbol":
+        for required in ("path", "anchor", "new_source"):
+            if required not in args:
+                raise ToolError(f"insert_after_symbol requires {required}")
+        from .python_symbols import insert_after_symbol
+
+        return insert_after_symbol(
+            repo_path,
+            str(args["path"]),
+            str(args["anchor"]),
+            str(args["new_source"]),
+        )
     if name == "delete_path":
         if "path" not in args:
             raise ToolError("delete_path requires path")
