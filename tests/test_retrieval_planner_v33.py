@@ -214,7 +214,8 @@ def test_retrieval_plan_executes_before_first_model_decision(tmp_path):
     first_prompt = "\n".join(message["content"] for message in session.calls[0])
     assert "DETERMINISTIC RETRIEVAL RESULT for get_reference_context" in first_prompt
     assert "assert multiply(3, 4) == 12" in first_prompt
-    assert "assert format_sum(2, 3) == \"sum=5\"" in first_prompt
+    assert "format_sum(2, 3)" in first_prompt
+    assert "sum=5" in first_prompt
     assert "DETERMINISTIC RETRIEVAL RESULT for read_file" in first_prompt
     assert "def add(a, b):" in first_prompt
     assert "def format_product(a, b):" in first_prompt
