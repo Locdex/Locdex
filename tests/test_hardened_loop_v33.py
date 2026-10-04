@@ -13,7 +13,7 @@ class FakeInner:
         return self.decisions.pop(0)
 
 
-def test_repeated_exact_edit_forces_source_refresh():
+def test_repeated_exact_edit_forces_replan_not_source_refresh():
     decision = {
         "action": "tool",
         "tool": "replace_in_file",
@@ -28,14 +28,26 @@ def test_repeated_exact_edit_forces_source_refresh():
         _repair_deferrals=0,
         _mutations_since_validation=0,
     )
-    session = _RepairAwareSession(FakeInner([decision, decision]), engine)
+    session = _RepairAwareSession(
+        FakeInner(
+            [
+                decision,
+                decision,
+                {
+                    "action": "tool",
+                    "tool": "run_tests",
+                    "args": {},
+                },
+            ]
+        ),
+        engine,
+    )
 
     first = session.json_completion([], {})
     second = session.json_completion([], {})
 
     assert first["tool"] == "replace_in_file"
-    assert second["tool"] == "read_file"
-    assert second["args"]["path"] == "app.py"
+    assert second["tool"] == "run_tests"
 
 
 def test_repair_mode_forces_validation_after_two_mutations():
