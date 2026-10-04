@@ -26,10 +26,20 @@ class _RepairAwareSession:
         self._signature_counts: dict[str, int] = {}
 
     def json_completion(self, messages, schema, **kwargs):
+        task_state = getattr(self.engine, "task_state", None)
+        if task_state is None:
+            task_state = TaskState.from_task("")
+            self.engine.task_state = task_state
+
+        context_config = getattr(self.engine, "context_manager_config", None)
+        if context_config is None:
+            context_config = ContextManagerConfig()
+            self.engine.context_manager_config = context_config
+
         compacted = maybe_compact(
             list(messages),
-            self.engine.task_state,
-            self.engine.context_manager_config,
+            task_state,
+            context_config,
         )
         self.engine._last_context_compaction = compacted
         messages = compacted.messages
