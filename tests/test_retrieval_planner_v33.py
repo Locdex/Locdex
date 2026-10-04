@@ -281,7 +281,10 @@ def test_retrieval_prelude_for_change_task_preserves_model_step_budget(tmp_path)
         max_steps=2,
     )
 
-    assert "def multiply(a, b):" in (tmp_path / "calculator.py").read_text(encoding="utf-8")
+    assert "def multiply(a, b):" not in (tmp_path / "calculator.py").read_text(encoding="utf-8")
+    assert result["rollback_performed"] is True
+    assert "calculator.py" in result["rolled_back_files"]
+    assert "calculator.py" in result["attempted_files_modified"]
     assert result["steps"] <= 2
     deterministic = [
         call for call in result["tool_calls"]
