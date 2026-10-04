@@ -40,6 +40,7 @@ def test_user_defines_agent_tasks_models_and_scopes():
                 "model": "qwen25-7b",
                 "max_steps": 7,
                 "mode": "balanced",
+                "permission_mode": "auto-edit",
             },
             "agents": [
                 {
@@ -60,6 +61,7 @@ def test_user_defines_agent_tasks_models_and_scopes():
     assert [agent.name for agent in spec.agents] == ["api-migration", "docs-check"]
     assert spec.agents[0].task == "Migrate the API client."
     assert spec.agents[0].model == "qwen25-7b"
+    assert spec.agents[0].permission_mode == "auto-edit"
     assert spec.agents[0].write_scope == ("src/api/**",)
     assert spec.agents[1].model == "qwen25-3b"
     assert spec.agents[1].task == "Update the migration documentation."
@@ -117,6 +119,7 @@ def test_supervisor_uses_isolated_worktrees_and_user_scopes(tmp_path, monkeypatc
             routing_mode,
             write_scope,
             progress,
+            permission_controller,
         ):
             calls.append(
                 {
@@ -126,6 +129,7 @@ def test_supervisor_uses_isolated_worktrees_and_user_scopes(tmp_path, monkeypatc
                     "max_steps": max_steps,
                     "mode": routing_mode,
                     "write_scope": write_scope,
+                    "permission_mode": permission_controller.mode.value,
                 }
             )
             return {
@@ -146,12 +150,14 @@ def test_supervisor_uses_isolated_worktrees_and_user_scopes(tmp_path, monkeypatc
                     "task": "Implement backend change.",
                     "model": "qwen25-7b",
                     "write_scope": ["src/backend/**"],
+                    "permission_mode": "auto-edit",
                 },
                 {
                     "name": "frontend",
                     "task": "Implement frontend change.",
                     "model": "qwen25-3b",
                     "write_scope": ["src/frontend/**"],
+                    "permission_mode": "auto-edit",
                 },
             ]
         }
@@ -172,7 +178,9 @@ def test_supervisor_uses_isolated_worktrees_and_user_scopes(tmp_path, monkeypatc
 
     by_task = {call["task"]: call for call in calls}
     assert by_task["Implement backend change."]["write_scope"] == ["src/backend/**"]
+    assert by_task["Implement backend change."]["permission_mode"] == "auto-edit"
     assert by_task["Implement frontend change."]["write_scope"] == ["src/frontend/**"]
+    assert by_task["Implement frontend change."]["permission_mode"] == "auto-edit"
 
 
 def test_supervisor_requires_installed_models(tmp_path, monkeypatch):
@@ -185,10 +193,83 @@ def test_supervisor_requires_installed_models(tmp_path, monkeypatch):
     spec = parse_agent_spec(
         {
             "agents": [
-                {"name": "worker", "task": "Inspect app.", "model": "qwen25-3b"}
+                {
+                    "name": "worker",
+                    "task": "Inspect app.",
+                    "model": "qwen25-3b",
+                    "permission_mode": "auto-edit",
+                }
             ]
         }
     )
 
     with pytest.raises(supervisor.MultiAgentError, match="model install"):
         supervisor.run_agents(spec, str(repo))
+
+
+def test_parallel_multiagent_rejects_interactive_ask_mode(tmp_path, monkeypatch):
+    repo = _clean_repo(tmp_path)
+    monkeypatch.setattr(
+        supervisor,
+        "model_status",
+        lambda key: {"installed": True, "model": key},
+    )
+    spec = parse_agent_spec(
+        {
+            "agents": [
+                {"name": "a", "task": "Inspect app.", "model": "smoke"},
+                {"name": "b", "task": "Inspect app.", "model": "smoke"},
+            ]
+        }
+    )
+
+    with pytest.raises(supervisor.MultiAgentError, match="--parallel 1"):
+        supervisor.run_agents(
+            spec,
+            str(repo),
+            parallel=2,
+            approval_callback=lambda request: None,
+        )
+
+
+def test_serial_ask_mode_accepts_approval_callback(tmp_path, monkeypatch):
+    repo = _clean_repo(tmp_path)
+    cache = tmp_path / "cache"
+    monkeypatch.setattr(worktrees, "user_cache_dir", lambda *args, **kwargs: str(cache))
+    monkeypatch.setattr(
+        supervisor,
+        "model_status",
+        lambda key: {"installed": True, "model": key},
+    )
+
+    seen = {}
+
+    class FakeEngine:
+        def __init__(self, model_key=None):
+            self.model_key = model_key
+
+        def execute(self, task, repo_path, **kwargs):
+            seen["mode"] = kwargs["permission_controller"].mode.value
+            seen["callback"] = kwargs["permission_controller"].approval_callback
+            return {"status": "completed", "steps": 1, "files_modified": []}
+
+    monkeypatch.setattr(supervisor, "AgentEngine", FakeEngine)
+    callback = lambda request: None
+    spec = parse_agent_spec(
+        {
+            "agents": [
+                {"name": "worker", "task": "Inspect app.", "model": "smoke"}
+            ]
+        }
+    )
+
+    result = supervisor.run_agents(
+        spec,
+        str(repo),
+        parallel=1,
+        approval_callback=callback,
+    )
+
+    assert result["agents_completed"] == 1
+    assert seen["mode"] == "ask"
+    assert seen["callback"] is callback
