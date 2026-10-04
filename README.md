@@ -56,6 +56,20 @@ locdex model use qwen25-7b
 
 The npm wrapper requires Node.js 18+ and Python 3.10–3.12 in its first release. A fully managed Python bootstrap can replace that host-Python requirement later without changing the Python core.
 
+## Model qualification
+
+Catalog status is only a starting point. Locdex includes a reproducible local qualification command so models can be tested on real hardware with the same runtime and hardened agent path users will run:
+
+```bash
+locdex model install qwen25-7b
+locdex runtime install --backend auto
+locdex model qualify qwen25-7b
+```
+
+Qualification checks hardware eligibility, runtime health, an exact-response prompt probe, and a bounded coding-agent task with verification and test-preservation guards. Reports are saved under the Locdex user cache and contain model/runtime/hardware outcome metadata, not the user's repository code.
+
+Use `--prompt-only` for a lightweight inference check. Hardware minimums are enforced by default; `--force-hardware` is available only for intentionally testing below a profile's stated minimum.
+
 ## User-defined multi-agent runs
 
 Locdex does not impose fixed planner/coder/reviewer roles. Users define each agent's name, task, model, step budget, routing mode, and optional write scope in YAML.
