@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
 
@@ -348,6 +349,23 @@ class AgentEngine(BaseAgentEngine):
                         [],
                     )
                 )
+                write_scope = list(getattr(self, "_write_scope", []) or [])
+                if write_scope and not any(
+                    fnmatch(normalized_path, pattern)
+                    for pattern in write_scope
+                ):
+                    self._repair_required = True
+                    self.task_state.record_failure(
+                        f"mutation outside user write scope: {normalized_path}"
+                    )
+                    return {
+                        "error": (
+                            "Mutation blocked outside the user-defined write scope. "
+                            f"Allowed patterns: {write_scope}"
+                        ),
+                        "path": normalized_path,
+                        "write_scope_blocked": True,
+                    }
 
                 if (
                     is_test_path(normalized_path)
@@ -493,10 +511,16 @@ class AgentEngine(BaseAgentEngine):
         routing_mode: str = "balanced",
         session: Any | None = None,
         progress=None,
+        write_scope: list[str] | None = None,
     ) -> dict:
         self._repair_required = False
         self._repair_deferrals = 0
         self._mutations_since_validation = 0
+        self._write_scope = [
+            str(pattern).replace("\\", "/")
+            for pattern in (write_scope or [])
+            if str(pattern).strip()
+        ]
         self.change_journal = ChangeJournal(repo_path)
         self.task_state = TaskState.from_task(
             task,
