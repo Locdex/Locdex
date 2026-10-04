@@ -16,6 +16,7 @@ from ..intelligence import (
 )
 from ..models import get_model_profile
 from ..runtime import LlamaCppSession, detect_hardware
+from ..sandbox import SandboxMode, SandboxPolicy
 from ..security import PermissionController
 from ..tools import TOOLS
 from ..task_state import TaskState
@@ -274,8 +275,29 @@ class AgentEngine(BaseAgentEngine):
         args: dict[str, Any],
         progress,
     ) -> dict[str, Any]:
-        permission_controller = getattr(self, "permission_controller", None)
+        sandbox_policy = getattr(self, "sandbox_policy", None)
         definition = TOOLS.get(name)
+        if sandbox_policy is not None and definition is not None:
+            sandbox_decision = sandbox_policy.authorize(
+                tool=name,
+                risk=definition.risk,
+                args=args,
+            )
+            if not sandbox_decision.allowed:
+                self.task_state.add_decision(f"sandbox denied {name}")
+                self.task_state.set_next_action(
+                    f"replan without sandbox-denied tool {name}"
+                )
+                self._emit(progress, f"[Sandbox] denied {name}")
+                return {
+                    "error": sandbox_decision.reason,
+                    "sandbox_denied": True,
+                    "sandbox_mode": sandbox_policy.mode.value,
+                    "tool": name,
+                    "risk": definition.risk.value,
+                }
+
+        permission_controller = getattr(self, "permission_controller", None)
         if permission_controller is not None and definition is not None:
             decision = permission_controller.authorize(
                 repo_path=repo_path,
@@ -537,11 +559,13 @@ class AgentEngine(BaseAgentEngine):
         progress=None,
         write_scope: list[str] | None = None,
         permission_controller: PermissionController | None = None,
+        sandbox_mode: str | SandboxMode = SandboxMode.WORKSPACE_WRITE,
     ) -> dict:
         self._repair_required = False
         self._repair_deferrals = 0
         self._mutations_since_validation = 0
         self.permission_controller = permission_controller
+        self.sandbox_policy = SandboxPolicy(sandbox_mode)
         self.verifier.permission_controller = permission_controller
         self._write_scope = [
             str(pattern).replace("\\", "/")
@@ -630,6 +654,7 @@ class AgentEngine(BaseAgentEngine):
             )
 
         result["task_state"] = self.task_state.to_prompt()
+        result["sandbox_mode"] = self.sandbox_policy.mode.value
         result["retrieval_plan"] = self.retrieval_plan.to_dict()
         result["context_compactions"] = self.task_state.compactions
         if self._last_context_compaction is not None:
