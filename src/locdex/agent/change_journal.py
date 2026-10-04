@@ -10,6 +10,7 @@ from typing import Any
 class JournalEntry:
     path: str
     existed: bool
+    kind: str
     before: bytes | None
     before_sha256: str | None
 
@@ -17,6 +18,7 @@ class JournalEntry:
         return {
             "path": self.path,
             "existed": self.existed,
+            "kind": self.kind,
             "before_sha256": self.before_sha256,
         }
 
@@ -60,13 +62,23 @@ class ChangeJournal:
             entry = JournalEntry(
                 path=relative,
                 existed=True,
+                kind="file",
                 before=before,
                 before_sha256=digest,
+            )
+        elif candidate.is_dir():
+            entry = JournalEntry(
+                path=relative,
+                existed=True,
+                kind="directory",
+                before=None,
+                before_sha256=None,
             )
         else:
             entry = JournalEntry(
                 path=relative,
                 existed=False,
+                kind="missing",
                 before=None,
                 before_sha256=None,
             )
@@ -96,11 +108,15 @@ class ChangeJournal:
                 continue
             candidate = (self.root / relative).resolve()
             try:
-                if entry.existed:
+                if entry.existed and entry.kind == "file":
                     candidate.parent.mkdir(parents=True, exist_ok=True)
                     candidate.write_bytes(entry.before or b"")
+                elif entry.existed and entry.kind == "directory":
+                    candidate.mkdir(parents=True, exist_ok=True)
                 elif candidate.is_file():
                     candidate.unlink()
+                elif candidate.is_dir() and not any(candidate.iterdir()):
+                    candidate.rmdir()
                 restored.append(relative)
             except OSError:
                 continue
