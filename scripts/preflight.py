@@ -95,6 +95,8 @@ def main() -> int:
             "locdex/multiagent/worktrees.py",
             "locdex/models/profiles.py",
             "locdex/security/policy.py",
+            "locdex/qualification/__init__.py",
+            "locdex/qualification/model.py",
             "locdex/routing/planner.py",
             "locdex/routing/router.py",
             "locdex/routing/task_profile.py",
