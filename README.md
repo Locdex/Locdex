@@ -178,6 +178,7 @@ defaults:
   model: qwen25-7b
   max_steps: 8
   mode: balanced
+  permission_mode: auto-edit
 
 agents:
   - name: backend
@@ -200,6 +201,8 @@ locdex agents run --config agents.yaml --repo . --parallel 2
 ```
 
 Each agent receives an isolated Git worktree and branch. Locdex does not auto-commit or auto-merge agent changes. Multi-agent runs currently require a clean base working tree. Parallelism defaults to 1 so local users do not accidentally load several large models into RAM.
+
+Each agent can set its own `permission_mode`. Interactive `ask` mode is supported for serial runs (`--parallel 1`). Parallel runs require non-interactive policies such as `plan`, `auto-edit`, `trusted`, or `unrestricted` so approval prompts cannot collide across worker threads.
 
 ## Repository intelligence and context
 
