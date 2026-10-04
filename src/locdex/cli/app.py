@@ -4,6 +4,7 @@ import argparse
 import json
 
 from .. import __version__
+from .interactive import run_interactive
 from ..agent import AgentEngine
 from ..multiagent import AgentSpecError, MultiAgentError, WorktreeError, load_agent_spec, run_agents
 from ..models import (
@@ -51,6 +52,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("status", help="Show detected hardware.")
     sub.add_parser("models", help="Compatibility alias for model list.")
+    resume_cmd = sub.add_parser("resume", help="Resume an interactive Locdex session.")
+    resume_cmd.add_argument("session_id", nargs="?")
+    resume_cmd.add_argument("--repo", default=".")
 
     model = sub.add_parser("model", help="Manage local GGUF models.")
     model_sub = model.add_subparsers(dest="model_action", required=True)
@@ -210,6 +214,12 @@ def _permission_controller(
 
 def cli(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+
+    if args.command is None:
+        return run_interactive(".")
+
+    if args.command == "resume":
+        return run_interactive(args.repo, resume_id=args.session_id)
 
     if args.command == "status":
         _print_json(detect_hardware().to_dict())
