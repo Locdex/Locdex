@@ -1,3 +1,4 @@
+from .changeset import ChangeSet
 from .checkpoints import (
     Checkpoint,
     create_checkpoint,
@@ -8,6 +9,7 @@ from .checkpoints import (
 from .state import SessionState, SessionTask, list_sessions, sessions_dir
 
 __all__ = [
+    "ChangeSet",
     "Checkpoint",
     "SessionState",
     "SessionTask",
