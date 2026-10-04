@@ -43,19 +43,23 @@ def is_test_path(path: str) -> bool:
 def task_explicitly_allows_test_changes(task: str, path: str | None = None) -> bool:
     text = " ".join(task.lower().split())
     verbs = "|".join(_CHANGE_VERBS)
-    patterns = (
-        rf"\b(?:{verbs})\b.{{0,36}}\btests?\b",
-        rf"\btests?\b.{{0,36}}\b(?:{verbs})\b",
+    qualifiers = (
+        r"(?:(?:the|these|those|failing|broken|unit|integration|regression|"
+        r"existing|current|new)\s+){0,4}"
     )
-    if any(re.search(pattern, text) for pattern in patterns):
+    if re.search(
+        rf"\b(?:{verbs})\b\s+{qualifiers}\btests?\b",
+        text,
+    ):
         return True
 
     if path:
         normalized = path.replace("\\", "/").lower()
-        basename = Path(normalized).name
-        named = normalized in text or basename in text
-        changed = any(re.search(rf"\b{verb}\b", text) for verb in _CHANGE_VERBS)
-        if named and changed:
+        basename = re.escape(Path(normalized).name)
+        if re.search(
+            rf"\b(?:{verbs})\b\s+(?:(?:the|file)\s+)?{basename}\b",
+            text,
+        ):
             return True
     return False
 
