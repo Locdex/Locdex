@@ -83,3 +83,21 @@ def test_cli_agents_run_parallel():
     )
     assert args.agents_action == "run"
     assert args.parallel == 3
+
+
+def test_cli_model_qualify():
+    args = build_parser().parse_args(
+        [
+            "model",
+            "qualify",
+            "qwen25-7b",
+            "--max-steps",
+            "10",
+            "--prompt-only",
+        ]
+    )
+    assert args.command == "model"
+    assert args.model_action == "qualify"
+    assert args.key == "qwen25-7b"
+    assert args.max_steps == 10
+    assert args.prompt_only is True
