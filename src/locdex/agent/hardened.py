@@ -542,6 +542,7 @@ class AgentEngine(BaseAgentEngine):
         self._repair_deferrals = 0
         self._mutations_since_validation = 0
         self.permission_controller = permission_controller
+        self.verifier.permission_controller = permission_controller
         self._write_scope = [
             str(pattern).replace("\\", "/")
             for pattern in (write_scope or [])
