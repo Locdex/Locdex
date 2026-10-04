@@ -180,6 +180,21 @@ class AgentEngine:
         ]
         return sorted(candidates, key=score)[: max(1, min(int(limit), 6))]
 
+    def _deterministic_retrieval_actions(
+        self,
+        *,
+        task: str,
+        repo_path: str,
+        prepared: dict,
+    ) -> list[dict[str, Any]]:
+        """Return pre-model read-only retrieval actions.
+
+        The base engine intentionally returns none. Specialized agent layers can
+        derive deterministic retrieval from repository intelligence without
+        spending a model generation or consuming the bounded agent step budget.
+        """
+        return []
+
     @staticmethod
     def _is_validation_call(call: dict[str, Any]) -> bool:
         tool = call.get("tool")
@@ -354,11 +369,58 @@ class AgentEngine:
                     }
                 )
 
+        prelude_read_paths: set[str] = set()
+        for planned in self._deterministic_retrieval_actions(
+            task=task,
+            repo_path=repo_path,
+            prepared=prepared,
+        ):
+            name = str(planned.get("tool", ""))
+            args = planned.get("args")
+            if not name or not isinstance(args, dict):
+                continue
+
+            result = self._run_tool(
+                repo_path=repo_path,
+                task=task,
+                name=name,
+                args=args,
+                progress=progress,
+            )
+            call = {
+                "tool": name,
+                "args": args,
+                "result": result,
+                "deterministic_retrieval": True,
+            }
+            tool_calls.append(call)
+
+            if (
+                name == "read_file"
+                and "error" not in result
+                and result.get("path")
+            ):
+                path = str(result["path"])
+                state.files_read.add(path)
+                prelude_read_paths.add(path)
+
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        f"DETERMINISTIC RETRIEVAL RESULT for {name}:\n"
+                        + self._compact_result(result, 4500)
+                    ),
+                }
+            )
+
         # The 1.5B smoke model is useful for validating mechanics but is weak at
         # planning multi-step tool use. Give it a small amount of exact source
         # deterministically so its first generation can focus on the edit.
         if self.model_key == "smoke":
             for path in self._smoke_bootstrap_paths(task, bootstrap_result):
+                if path in prelude_read_paths:
+                    continue
                 read_args = {"path": path, "start_line": 1, "end_line": 240}
                 read_result = self._run_tool(
                     repo_path=repo_path,
