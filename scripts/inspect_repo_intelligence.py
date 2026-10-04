@@ -10,6 +10,7 @@ from locdex.intelligence import (
     find_symbol,
     get_reference_context,
     get_symbol_source,
+    plan_retrieval,
     related_files,
 )
 
@@ -21,7 +22,15 @@ def main() -> int:
     parser.add_argument("--symbol")
     args = parser.parse_args()
 
+    plan = plan_retrieval(
+        args.repo,
+        args.task,
+        max_files=8,
+        source_tokens=1600,
+    )
     payload = {
+        "retrieval_plan": plan.to_dict(),
+        "retrieval_plan_prompt": plan.to_prompt(),
         "related_files": related_files(args.repo, args.task, limit=12),
         "task_context": build_task_context(
             args.repo,
