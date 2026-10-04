@@ -16,12 +16,16 @@ from ..intelligence import (
 from ..models import get_model_profile
 from ..runtime import LlamaCppSession, detect_hardware
 from ..task_state import TaskState
+from .change_journal import ChangeJournal
 from .engine import AgentEngine as BaseAgentEngine
 from .guards import (
     clean_model_result,
     guard_mutation_result,
+    is_test_path,
     preexisting_changed_paths,
     snapshot_file,
+    task_explicitly_allows_test_changes,
+    task_explicitly_names_change,
 )
 from .protocol import WORKSPACE_MUTATING_TOOLS
 
@@ -332,6 +336,59 @@ class AgentEngine(BaseAgentEngine):
                     self.task_state.pin_file(str(path))
             return result
 
+        if name in WORKSPACE_MUTATING_TOOLS:
+            raw_path = args.get("path")
+            if isinstance(raw_path, str) and raw_path:
+                normalized_path = raw_path.replace("\\", "/")
+                candidate = (Path(repo_path).resolve() / normalized_path).resolve()
+                likely_change_files = set(
+                    getattr(
+                        getattr(self, "retrieval_plan", None),
+                        "likely_change_files",
+                        [],
+                    )
+                )
+
+                if (
+                    is_test_path(normalized_path)
+                    and not task_explicitly_allows_test_changes(task, normalized_path)
+                ):
+                    self._repair_required = True
+                    self.task_state.record_failure(
+                        f"test mutation blocked outside explicit user intent: {normalized_path}"
+                    )
+                    return {
+                        "error": (
+                            "Mutation blocked: tests are verification evidence for this task. "
+                            "The user did not explicitly ask Locdex to add/change/fix tests."
+                        ),
+                        "path": normalized_path,
+                        "change_surface_blocked": True,
+                    }
+
+                if (
+                    candidate.exists()
+                    and likely_change_files
+                    and normalized_path not in likely_change_files
+                    and not task_explicitly_names_change(task, normalized_path)
+                ):
+                    self._repair_required = True
+                    self.task_state.record_failure(
+                        f"mutation outside planned change surface: {normalized_path}"
+                    )
+                    return {
+                        "error": (
+                            "Mutation blocked outside the planned change surface. "
+                            f"Allowed existing files: {sorted(likely_change_files)}"
+                        ),
+                        "path": normalized_path,
+                        "change_surface_blocked": True,
+                    }
+
+                journal = getattr(self, "change_journal", None)
+                if journal is not None:
+                    journal.capture(normalized_path)
+
         snapshot = snapshot_file(
             repo_path,
             name,
@@ -415,6 +472,9 @@ class AgentEngine(BaseAgentEngine):
             path = guarded.get("path") or args.get("path")
             if path:
                 self.task_state.mark_modified(str(path))
+                journal = getattr(self, "change_journal", None)
+                if journal is not None:
+                    journal.record_success(str(path))
 
         if name == "read_file" and guarded.get("path"):
             self.task_state.pin_file(str(guarded["path"]))
@@ -437,6 +497,7 @@ class AgentEngine(BaseAgentEngine):
         self._repair_required = False
         self._repair_deferrals = 0
         self._mutations_since_validation = 0
+        self.change_journal = ChangeJournal(repo_path)
         self.task_state = TaskState.from_task(
             task,
             acceptance_criteria=[
@@ -493,10 +554,30 @@ class AgentEngine(BaseAgentEngine):
             progress=progress,
         )
 
-        modified = set(result.get("files_modified") or [])
+        attempted_modified = set(result.get("files_modified") or [])
         preexisting = set(result.get("preexisting_changes") or [])
-        result["preexisting_changes_touched"] = sorted(preexisting & modified)
-        result["preexisting_changes"] = sorted(preexisting - modified)
+        result["attempted_files_modified"] = sorted(attempted_modified)
+        result["change_journal"] = self.change_journal.summary()
+
+        if result.get("status") != "completed":
+            restored = self.change_journal.rollback()
+            result["rollback_performed"] = bool(restored)
+            result["rolled_back_files"] = restored
+            result["files_modified"] = []
+            result["preexisting_changes_touched"] = sorted(
+                preexisting & attempted_modified
+            )
+            result["preexisting_changes"] = sorted(preexisting)
+        else:
+            result["rollback_performed"] = False
+            result["rolled_back_files"] = []
+            result["preexisting_changes_touched"] = sorted(
+                preexisting & attempted_modified
+            )
+            result["preexisting_changes"] = sorted(
+                preexisting - attempted_modified
+            )
+
         result["task_state"] = self.task_state.to_prompt()
         result["retrieval_plan"] = self.retrieval_plan.to_dict()
         result["context_compactions"] = self.task_state.compactions
