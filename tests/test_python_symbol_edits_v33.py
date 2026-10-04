@@ -97,3 +97,46 @@ def test_symbol_edit_path_traversal_is_blocked(tmp_path):
                 "new_source": "def value():\n    return 2",
             },
         )
+
+
+def test_replace_symbol_cannot_rename_target(tmp_path):
+    target = tmp_path / "calculator.py"
+    original = "def add(a, b):\n    return a + b\n"
+    target.write_text(original, encoding="utf-8")
+
+    with pytest.raises(ToolError, match="must preserve symbol name"):
+        execute_tool(
+            str(tmp_path),
+            "replace_symbol",
+            {
+                "path": "calculator.py",
+                "name": "add",
+                "new_source": "def multiply(a, b):\n    return a * b",
+            },
+        )
+
+    assert target.read_text(encoding="utf-8") == original
+
+
+def test_insert_after_symbol_rejects_duplicate_symbol(tmp_path):
+    target = tmp_path / "calculator.py"
+    original = (
+        "def add(a, b):\n"
+        "    return a + b\n\n"
+        "def multiply(a, b):\n"
+        "    return a * b\n"
+    )
+    target.write_text(original, encoding="utf-8")
+
+    with pytest.raises(ToolError, match="duplicate top-level Python symbol"):
+        execute_tool(
+            str(tmp_path),
+            "insert_after_symbol",
+            {
+                "path": "calculator.py",
+                "anchor": "add",
+                "new_source": "def multiply(a, b):\n    return a * b",
+            },
+        )
+
+    assert target.read_text(encoding="utf-8") == original
