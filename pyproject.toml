@@ -19,6 +19,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+mcp = [
+  "mcp>=2.3,<3",
+]
 dev = [
   "pytest>=8.0",
   "ruff>=0.8",
