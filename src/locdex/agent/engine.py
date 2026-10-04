@@ -276,16 +276,29 @@ class AgentEngine:
             hardware=prepared["hardware"],
         )
 
+        repo_context = self._repo_context(prepared)
         messages: list[dict[str, str]] = [
             {
                 "role": "system",
                 "content": system_prompt(
-                    self._repo_context(prepared),
+                    "",
                     self.model_key,
                 ),
             },
             {"role": "user", "content": task},
         ]
+        if repo_context:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "INITIAL RETRIEVABLE REPOSITORY CONTEXT\n"
+                        "This working context may become stale after edits and may be "
+                        "discarded during compaction. Re-read exact source when needed.\n\n"
+                        + repo_context
+                    ),
+                }
+            )
         tool_calls: list[dict[str, Any]] = []
         requires_change = task_requires_workspace_change(task)
         last_mutation_index: int | None = None
