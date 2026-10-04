@@ -18,6 +18,8 @@ TOOLS = {
     "search_code": ToolDefinition("search_code", RiskClass.READ, "Search workspace text literally."),
     "find_symbol": ToolDefinition("find_symbol", RiskClass.READ, "Find Python symbol definitions by exact name."),
     "find_references": ToolDefinition("find_references", RiskClass.READ, "Find Python references to an exact symbol."),
+    "get_symbol_source": ToolDefinition("get_symbol_source", RiskClass.READ, "Retrieve the exact source range for a Python symbol."),
+    "get_reference_context": ToolDefinition("get_reference_context", RiskClass.READ, "Retrieve small exact source ranges around symbol references."),
     "related_files": ToolDefinition("related_files", RiskClass.READ, "Rank files related to the current task using symbols/imports/tests."),
     "write_file": ToolDefinition("write_file", RiskClass.WRITE, "Create or replace a workspace text file."),
     "replace_in_file": ToolDefinition("replace_in_file", RiskClass.WRITE, "Replace exact text in a workspace file."),
