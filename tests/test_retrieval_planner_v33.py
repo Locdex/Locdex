@@ -169,3 +169,112 @@ def test_hardened_engine_seeds_task_state_before_first_model_turn(tmp_path):
     }
     assert ("multiply", "calculator.py") in missing
     assert ("format_sum", "formatter.py") in missing
+
+
+def test_retrieval_plan_executes_before_first_model_decision(tmp_path):
+    from locdex.agent.hardened import AgentEngine
+
+    _broken_fixture(tmp_path)
+    engine = AgentEngine(model_key="smoke")
+
+    class RecordingSession:
+        def __init__(self):
+            self.calls = []
+
+        def json_completion(self, messages, schema, **kwargs):
+            self.calls.append([dict(message) for message in messages])
+            return {
+                "action": "final",
+                "summary": "Inspected deterministic retrieval.",
+                "confidence": 0.9,
+            }
+
+    session = RecordingSession()
+    result = engine.execute(
+        "Inspect multiply and format_sum dependencies.",
+        str(tmp_path),
+        session=session,
+        max_steps=2,
+    )
+
+    assert result["status"] == "completed"
+    assert result["steps"] == 1
+    assert len(session.calls) == 1
+
+    first_prompt = "\n".join(message["content"] for message in session.calls[0])
+    assert "DETERMINISTIC RETRIEVAL RESULT for get_reference_context" in first_prompt
+    assert "assert multiply(3, 4) == 12" in first_prompt
+    assert "assert format_sum(2, 3) == \"sum=5\"" in first_prompt
+    assert "DETERMINISTIC RETRIEVAL RESULT for read_file" in first_prompt
+    assert "def add(a, b):" in first_prompt
+    assert "def format_product(a, b):" in first_prompt
+
+    deterministic = [
+        call for call in result["tool_calls"]
+        if call.get("deterministic_retrieval") is True
+    ]
+    assert [call["tool"] for call in deterministic] == [
+        "get_reference_context",
+        "get_reference_context",
+        "read_file",
+        "read_file",
+    ]
+
+    reads = [
+        call["args"]["path"]
+        for call in result["tool_calls"]
+        if call["tool"] == "read_file"
+    ]
+    assert reads.count("calculator.py") == 1
+    assert reads.count("formatter.py") == 1
+
+
+def test_retrieval_prelude_for_change_task_preserves_model_step_budget(tmp_path):
+    from locdex.agent.hardened import AgentEngine
+
+    _broken_fixture(tmp_path)
+    engine = AgentEngine(model_key="smoke")
+
+    class OneStepEditSession:
+        def __init__(self):
+            self.calls = 0
+
+        def json_completion(self, messages, schema, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return {
+                    "action": "tool",
+                    "tool": "replace_in_file",
+                    "args": {
+                        "path": "calculator.py",
+                        "old": "def add(a, b):\n    return a + b",
+                        "new": (
+                            "def add(a, b):\n"
+                            "    return a + b\n\n"
+                            "def multiply(a, b):\n"
+                            "    return a * b"
+                        ),
+                    },
+                }
+            return {
+                "action": "escalate",
+                "reason": "fixture stops after proving the first edit turn",
+                "confidence": 0.1,
+            }
+
+    session = OneStepEditSession()
+    result = engine.execute(
+        "Add multiply to calculator and expose format_product through formatter while keeping tests passing.",
+        str(tmp_path),
+        session=session,
+        max_steps=2,
+    )
+
+    assert "def multiply(a, b):" in (tmp_path / "calculator.py").read_text(encoding="utf-8")
+    assert result["steps"] <= 2
+    deterministic = [
+        call for call in result["tool_calls"]
+        if call.get("deterministic_retrieval") is True
+    ]
+    assert len(deterministic) == 4
+    assert session.calls >= 1
