@@ -451,6 +451,12 @@ class AgentEngine(BaseAgentEngine):
             max_files=8,
             source_tokens=1800,
         )
+        self._preloaded_paths = {
+            str(action.get("args", {}).get("path"))
+            for action in self.retrieval_plan.initial_actions
+            if action.get("tool") == "read_file"
+            and action.get("args", {}).get("path")
+        }
         for row in self.retrieval_plan.primary_files:
             path = row.get("path")
             if path:
