@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from ..sandbox import sandbox_environment
+from ..sandbox import sandbox_environment, wrap_command
 from ..security import native_authorize
 from .registry import TOOLS
 
@@ -357,9 +357,22 @@ def run_command(
     if not working.is_dir():
         raise ToolError("Command cwd must be a directory inside the workspace.")
 
+    wrapped_argv = list(argv)
+    sandbox_backend = "none"
+    if sandbox_mode:
+        try:
+            wrapped_argv, sandbox_backend = wrap_command(
+                repo_path,
+                str(working),
+                list(argv),
+                sandbox_mode,
+            )
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+
     try:
         process = subprocess.run(
-            argv,
+            wrapped_argv,
             cwd=working,
             capture_output=True,
             text=True,
@@ -370,7 +383,7 @@ def run_command(
             env=_sanitized_env(),
         )
     except FileNotFoundError as exc:
-        raise ToolError(f"Executable not found: {argv[0]}") from exc
+        raise ToolError(f"Executable not found: {wrapped_argv[0]}") from exc
     except subprocess.TimeoutExpired as exc:
         raise ToolError(f"Command timed out after {timeout}s: {shlex.join(argv)}") from exc
 
@@ -383,6 +396,8 @@ def run_command(
         "returncode": process.returncode,
         "output": combined,
         "command": shlex.join(argv),
+        "sandbox_backend": sandbox_backend,
+        "sandbox_mode": sandbox_mode,
     }
 
 
