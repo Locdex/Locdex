@@ -52,7 +52,9 @@ def test_model_catalog_spans_hardware_tiers(tmp_path, monkeypatch):
     assert by_key["smoke"]["profile_status"] == "development"
     assert by_key["qwen25-3b"]["recommended_ram_gb"] == 8
     assert by_key["qwen25-7b"]["recommended_ram_gb"] == 12
+    assert by_key["qwen25-7b"]["profile_status"] == "candidate"
     assert by_key["qwen25-14b"]["recommended_ram_gb"] == 16
+    assert by_key["qwen25-14b"]["profile_status"] == "candidate"
     assert by_key["qwen3-coder"]["recommended_ram_gb"] == 32
     assert by_key["qwen"]["profile_status"] == "supported"
     assert by_key["qwen25-7b"]["family"] == "qwen2.5-coder"
