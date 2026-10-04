@@ -6,6 +6,7 @@ from typing import Any
 
 from ..context import ContextBudget, ContextCompiler
 from ..models import get_model_profile, selected_model_key
+from ..project import project_instruction_prompt
 from ..routing import (
     LearnedRouter,
     RoutingPolicy,
@@ -301,8 +302,16 @@ class AgentEngine:
                     self.model_key,
                 ),
             },
-            {"role": "user", "content": task},
         ]
+        project_instructions = project_instruction_prompt(repo_path)
+        if project_instructions:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": project_instructions,
+                }
+            )
+        messages.append({"role": "user", "content": task})
         if repo_context:
             messages.append(
                 {
