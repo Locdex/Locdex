@@ -77,6 +77,7 @@ def main() -> int:
 
         required = {
             "locdex/cli/app.py",
+            "locdex/agent/change_journal.py",
             "locdex/agent/engine.py",
             "locdex/agent/guards.py",
             "locdex/agent/hardened.py",
