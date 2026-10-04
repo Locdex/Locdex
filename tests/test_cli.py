@@ -101,3 +101,24 @@ def test_cli_model_qualify():
     assert args.key == "qwen25-7b"
     assert args.max_steps == 10
     assert args.prompt_only is True
+
+
+def test_cli_task_defaults_to_ask_permissions():
+    args = build_parser().parse_args(
+        ["task", "--task", "Inspect and fix app.py"]
+    )
+    assert args.permission_mode == "ask"
+
+
+def test_cli_task_accepts_permission_modes():
+    for mode in ("plan", "ask", "auto-edit", "trusted", "unrestricted"):
+        args = build_parser().parse_args(
+            [
+                "task",
+                "--task",
+                "Inspect app.py",
+                "--permission-mode",
+                mode,
+            ]
+        )
+        assert args.permission_mode == mode
