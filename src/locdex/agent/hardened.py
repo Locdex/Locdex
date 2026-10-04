@@ -4,8 +4,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ..context_manager import ContextManagerConfig, maybe_compact
 from ..intelligence import find_references, find_symbol, related_files
+from ..models import get_model_profile
 from ..runtime import LlamaCppSession, detect_hardware
+from ..task_state import TaskState
 from .engine import AgentEngine as BaseAgentEngine
 from .guards import (
     clean_model_result,
@@ -23,6 +26,14 @@ class _RepairAwareSession:
         self._signature_counts: dict[str, int] = {}
 
     def json_completion(self, messages, schema, **kwargs):
+        compacted = maybe_compact(
+            list(messages),
+            self.engine.task_state,
+            self.engine.context_manager_config,
+        )
+        self.engine._last_context_compaction = compacted
+        messages = compacted.messages
+
         if (
             self.engine._repair_required
             and self.engine._mutations_since_validation >= 2
@@ -43,6 +54,19 @@ class _RepairAwareSession:
         decision = self.inner.json_completion(messages, schema, **kwargs)
 
         args = decision.get("args") if isinstance(decision.get("args"), dict) else {}
+        action = str(decision.get("action", ""))
+        tool = str(decision.get("tool", ""))
+        path = args.get("path")
+        if action == "tool":
+            detail = f"tool:{tool}"
+            if isinstance(path, str) and path:
+                detail += f" path={path}"
+            self.engine.task_state.add_decision(detail)
+            self.engine.task_state.set_next_action(detail)
+        elif action == "final":
+            self.engine.task_state.add_decision("model requested final")
+        elif action == "escalate":
+            self.engine.task_state.add_decision("model requested escalation")
         signature = json.dumps(
             {
                 "action": decision.get("action"),
@@ -122,6 +146,23 @@ class AgentEngine(BaseAgentEngine):
         self._repair_required = False
         self._repair_deferrals = 0
         self._mutations_since_validation = 0
+        profile = get_model_profile(self.model_key)
+        self.context_manager_config = ContextManagerConfig(
+            context_window_tokens=profile.preferred_context,
+            reserve_output_tokens=768,
+            reserve_state_tokens=768,
+            trigger_ratio=0.72,
+            keep_recent_messages=6,
+        )
+        self.task_state = TaskState.from_task(
+            "",
+            acceptance_criteria=[
+                "Complete the requested change or exit safely with evidence.",
+                "Preserve unrelated existing work.",
+                "Relevant verification must pass before completion.",
+            ],
+        )
+        self._last_context_compaction = None
 
     @staticmethod
     def _preexisting_changed_paths(status_result: dict[str, Any]) -> set[str]:
@@ -147,16 +188,32 @@ class AgentEngine(BaseAgentEngine):
         if name == "find_symbol":
             self._emit(progress, "[Agent] find_symbol")
             symbol = str(args.get("name", "")).strip()
-            return {"matches": find_symbol(repo_path, symbol)}
+            result = {"matches": find_symbol(repo_path, symbol)}
+            for match in result["matches"][:6]:
+                path = match.get("path")
+                if path:
+                    self.task_state.pin_file(str(path))
+            self.task_state.set_next_action(f"inspect references for symbol {symbol}")
+            return result
         if name == "find_references":
             self._emit(progress, "[Agent] find_references")
             symbol = str(args.get("name", "")).strip()
-            return {"matches": find_references(repo_path, symbol)}
+            result = {"matches": find_references(repo_path, symbol)}
+            for match in result["matches"][:8]:
+                path = match.get("path")
+                if path:
+                    self.task_state.pin_file(str(path))
+            return result
         if name == "related_files":
             self._emit(progress, "[Agent] related_files")
             query = str(args.get("task", task))
             limit = int(args.get("limit", 8))
-            return {"files": related_files(repo_path, query, limit=limit)}
+            result = {"files": related_files(repo_path, query, limit=limit)}
+            for row in result["files"][:8]:
+                path = row.get("path")
+                if path:
+                    self.task_state.pin_file(str(path))
+            return result
 
         snapshot = snapshot_file(
             repo_path,
@@ -173,6 +230,8 @@ class AgentEngine(BaseAgentEngine):
                 except (OSError, UnicodeDecodeError):
                     current_source = ""
                 self._repair_required = True
+                self.task_state.record_failure("write_file rejected for existing file")
+                self.task_state.pin_file(str(args.get("path", "")))
                 return {
                     "error": (
                         "write_file cannot replace an existing file without overwrite=true. "
@@ -199,6 +258,7 @@ class AgentEngine(BaseAgentEngine):
 
         if "error" in guarded and name in WORKSPACE_MUTATING_TOOLS:
             self._repair_required = True
+            self.task_state.record_failure(f"{name} mutation rejected")
             path_text = guarded.get("path") or args.get("path")
             if isinstance(path_text, str):
                 candidate = (Path(repo_path).resolve() / path_text).resolve()
@@ -212,13 +272,38 @@ class AgentEngine(BaseAgentEngine):
                         "Use the current_source exactly. Prefer a small replace_in_file edit."
                     )
         elif name == "run_tests":
-            self._repair_required = guarded.get("ok") is not True
+            passed = guarded.get("ok") is True
+            self._repair_required = not passed
             self._mutations_since_validation = 0
+            if passed:
+                self.task_state.mark_validation(True)
+            else:
+                output = str(guarded.get("output", ""))
+                identifiers = []
+                for line in output.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith(("FAILED ", "ERROR ")):
+                        identifiers.append(stripped[:240])
+                    if len(identifiers) >= 4:
+                        break
+                detail = "; ".join(identifiers) or (
+                    f"run_tests failed with returncode={guarded.get('returncode')}"
+                )
+                self.task_state.mark_validation(False, detail)
         elif (
             name in WORKSPACE_MUTATING_TOOLS
             and guarded.get("ok") is True
         ):
             self._mutations_since_validation += 1
+            path = guarded.get("path") or args.get("path")
+            if path:
+                self.task_state.mark_modified(str(path))
+
+        if name == "read_file" and guarded.get("path"):
+            self.task_state.pin_file(str(guarded["path"]))
+            self.task_state.set_next_action(
+                f"use exact source from {guarded['path']} for the next decision"
+            )
 
         return guarded
 
@@ -235,6 +320,15 @@ class AgentEngine(BaseAgentEngine):
         self._repair_required = False
         self._repair_deferrals = 0
         self._mutations_since_validation = 0
+        self.task_state = TaskState.from_task(
+            task,
+            acceptance_criteria=[
+                "Complete the requested change or exit safely with evidence.",
+                "Preserve unrelated existing work.",
+                "Relevant verification must pass before completion.",
+            ],
+        )
+        self._last_context_compaction = None
 
         inner = session or LlamaCppSession(
             model_key=self.model_key,
@@ -255,4 +349,9 @@ class AgentEngine(BaseAgentEngine):
         preexisting = set(result.get("preexisting_changes") or [])
         result["preexisting_changes_touched"] = sorted(preexisting & modified)
         result["preexisting_changes"] = sorted(preexisting - modified)
+        result["task_state"] = self.task_state.to_prompt()
+        result["context_compactions"] = self.task_state.compactions
+        if self._last_context_compaction is not None:
+            result["context_tokens_before"] = self._last_context_compaction.before_tokens
+            result["context_tokens_after"] = self._last_context_compaction.after_tokens
         return result
