@@ -203,69 +203,14 @@ class AgentEngine(BaseAgentEngine):
         plan = getattr(self, "retrieval_plan", None)
         if plan is None:
             return []
-
-        actions: list[dict[str, Any]] = []
-        seen: set[str] = set()
-
-        # Consumer/test evidence for structurally missing symbols comes first.
-        # This gives the model the acceptance evidence before exact target source.
-        for missing in plan.missing_symbols[:4]:
-            key = f"reference:{missing.name}"
-            if key in seen:
-                continue
-            seen.add(key)
-            actions.append(
-                {
-                    "tool": "get_reference_context",
-                    "args": {
-                        "name": missing.name,
-                        "context_lines": 2,
-                        "limit": 6,
-                    },
-                }
-            )
-
-        # Always refresh the likely change surface immediately before the first
-        # model generation. These are retrievable reads, not model-planning steps.
-        for path in plan.likely_change_files[:4]:
-            key = f"file:{path}"
-            if key in seen:
-                continue
-            seen.add(key)
-            actions.append(
-                {
-                    "tool": "read_file",
-                    "args": {
-                        "path": path,
-                        "start_line": 1,
-                        "end_line": 240,
-                    },
-                }
-            )
-
-        # If no concrete change surface was inferred, inspect the strongest
-        # non-test primary files rather than spending a model turn choosing them.
-        if not any(action["tool"] == "read_file" for action in actions):
-            for row in plan.primary_files:
-                if row.get("is_test"):
-                    continue
-                path = str(row.get("path", ""))
-                if not path:
-                    continue
-                actions.append(
-                    {
-                        "tool": "read_file",
-                        "args": {
-                            "path": path,
-                            "start_line": 1,
-                            "end_line": 200,
-                        },
-                    }
-                )
-                if sum(action["tool"] == "read_file" for action in actions) >= 3:
-                    break
-
-        return actions
+        return [
+            {
+                "tool": str(action.get("tool", "")),
+                "args": dict(action.get("args") or {}),
+            }
+            for action in plan.initial_actions
+            if action.get("tool")
+        ]
 
     def _run_tool(
         self,
