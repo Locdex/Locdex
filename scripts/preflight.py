@@ -82,6 +82,8 @@ def main() -> int:
             "locdex/agent/hardened.py",
             "locdex/agent/protocol.py",
             "locdex/context/compiler.py",
+            "locdex/context_manager.py",
+            "locdex/task_state.py",
             "locdex/intelligence/graph.py",
             "locdex/models/manager.py",
             "locdex/models/profiles.py",
