@@ -7,6 +7,7 @@ from typing import Any, Callable
 from ..agent import AgentEngine
 from ..models import model_status
 from ..runtime import RuntimeExecutionError
+from ..security import PermissionController, PermissionMode
 from .spec import AgentDefinition, AgentRunSpec
 from .worktrees import (
     AgentWorkspace,
@@ -43,12 +44,19 @@ def _agent_result(
     workspace: AgentWorkspace,
     *,
     progress: ProgressCallback | None,
+    approval_callback=None,
 ) -> dict[str, Any]:
     def emit(message: str) -> None:
         if progress is not None:
             progress(f"[Agent:{definition.name}] {message}")
 
     engine = AgentEngine(model_key=definition.model)
+    permission_controller = PermissionController(
+        definition.permission_mode,
+        approval_callback=approval_callback
+        if definition.permission_mode == PermissionMode.ASK.value
+        else None,
+    )
     try:
         result = engine.execute(
             definition.task,
@@ -57,6 +65,7 @@ def _agent_result(
             routing_mode=definition.mode,
             write_scope=list(definition.write_scope),
             progress=emit,
+            permission_controller=permission_controller,
         )
     except RuntimeExecutionError as exc:
         result = {
@@ -78,6 +87,7 @@ def _agent_result(
         "task": definition.task,
         "model": definition.model,
         "mode": definition.mode,
+        "permission_mode": definition.permission_mode,
         "write_scope": list(definition.write_scope),
         "workspace": workspace.to_dict(),
         "result": result,
@@ -90,8 +100,23 @@ def run_agents(
     *,
     parallel: int = 1,
     progress: ProgressCallback | None = None,
+    approval_callback=None,
 ) -> dict[str, Any]:
     workers = max(1, min(int(parallel), 8, len(spec.agents)))
+    ask_agents = [
+        agent.name
+        for agent in spec.agents
+        if agent.permission_mode == PermissionMode.ASK.value
+    ]
+    if ask_agents and workers > 1:
+        raise MultiAgentError(
+            "Interactive ask permissions require --parallel 1. "
+            f"Agents using ask mode: {ask_agents}"
+        )
+    if ask_agents and approval_callback is None:
+        raise MultiAgentError(
+            "Interactive ask permissions require an approval callback."
+        )
     ensure_clean_repository(repo_path)
     _check_models(spec)
 
@@ -122,6 +147,7 @@ def run_agents(
                 definition,
                 workspaces[definition.name],
                 progress=safe_progress,
+                approval_callback=approval_callback,
             ): definition.name
             for definition in spec.agents
         }
