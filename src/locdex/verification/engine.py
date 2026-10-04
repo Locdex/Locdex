@@ -5,6 +5,7 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from ..sandbox import SandboxPolicy
 from ..security import PermissionController, RiskClass
 from ..tools.executor import run_command, run_tests
 
@@ -44,9 +45,33 @@ class VerificationEngine:
         *,
         run_lint: bool = True,
         permission_controller: PermissionController | None = None,
+        sandbox_mode: str = "workspace-write",
     ):
         self.run_lint = run_lint
         self.permission_controller = permission_controller
+        self.sandbox_policy = SandboxPolicy(sandbox_mode)
+        self.sandbox_mode = self.sandbox_policy.mode.value
+
+    def _sandbox_denied(
+        self,
+        *,
+        tool: str,
+        risk: RiskClass,
+        args: dict,
+        check_name: str,
+    ) -> VerificationCheck | None:
+        decision = self.sandbox_policy.authorize(
+            tool=tool,
+            risk=risk,
+            args=args,
+        )
+        if decision.allowed:
+            return None
+        return VerificationCheck(
+            check_name,
+            "failed",
+            output=f"Sandbox denied: {decision.reason}",
+        )
 
     def _permission_denied(
         self,
@@ -107,6 +132,14 @@ class VerificationEngine:
             return VerificationCheck("compile", "skipped", output="No changed Python files.")
 
         argv = [sys.executable, "-m", "py_compile", *python_files]
+        denied = self._sandbox_denied(
+            tool="run_command",
+            risk=RiskClass.EXECUTE,
+            args={"argv": argv, "timeout": 120},
+            check_name="compile",
+        )
+        if denied is not None:
+            return denied
         denied = self._permission_denied(
             repo_path,
             tool="run_command",
@@ -120,10 +153,19 @@ class VerificationEngine:
             repo_path,
             argv,
             timeout=120,
+            sandbox_mode=self.sandbox_mode,
         )
         return self._from_tool_result("compile", result)
 
     def _tests(self, repo_path: str) -> VerificationCheck:
+        denied = self._sandbox_denied(
+            tool="run_tests",
+            risk=RiskClass.EXECUTE,
+            args={},
+            check_name="tests",
+        )
+        if denied is not None:
+            return denied
         denied = self._permission_denied(
             repo_path,
             tool="run_tests",
@@ -133,7 +175,7 @@ class VerificationEngine:
         )
         if denied is not None:
             return denied
-        result = run_tests(repo_path)
+        result = run_tests(repo_path, sandbox_mode=self.sandbox_mode)
         if (
             result.get("returncode") is None
             and "No supported test runner" in str(result.get("output", ""))
@@ -174,6 +216,14 @@ class VerificationEngine:
             return VerificationCheck("lint", "skipped", output="Ruff is configured but not installed.")
 
         argv = [ruff, "check", *python_files]
+        denied = self._sandbox_denied(
+            tool="run_command",
+            risk=RiskClass.EXECUTE,
+            args={"argv": argv, "timeout": 120},
+            check_name="lint",
+        )
+        if denied is not None:
+            return denied
         denied = self._permission_denied(
             repo_path,
             tool="run_command",
@@ -183,7 +233,12 @@ class VerificationEngine:
         )
         if denied is not None:
             return denied
-        result = run_command(repo_path, argv, timeout=120)
+        result = run_command(
+            repo_path,
+            argv,
+            timeout=120,
+            sandbox_mode=self.sandbox_mode,
+        )
         return self._from_tool_result("lint", result)
 
     def verify(
