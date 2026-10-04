@@ -36,6 +36,40 @@ Locdex exposes a local model catalog across hardware tiers. `locdex model list` 
 
 Users select models explicitly with `locdex model use <key>` or per task with `locdex task --model <key> ...`. The smoke profile is intentionally not a production recommendation.
 
+## User-defined multi-agent runs
+
+Locdex does not impose fixed planner/coder/reviewer roles. Users define each agent's name, task, model, step budget, routing mode, and optional write scope in YAML.
+
+```yaml
+version: 1
+
+defaults:
+  model: qwen25-7b
+  max_steps: 8
+  mode: balanced
+
+agents:
+  - name: backend
+    task: Implement the API migration without changing frontend code.
+    write_scope:
+      - src/backend/**
+
+  - name: frontend
+    task: Update the frontend client for the new API.
+    model: qwen25-3b
+    write_scope:
+      - src/frontend/**
+```
+
+Validate and run it with:
+
+```bash
+locdex agents validate --config agents.yaml
+locdex agents run --config agents.yaml --repo . --parallel 2
+```
+
+Each agent receives an isolated Git worktree and branch. Locdex does not auto-commit or auto-merge agent changes. Multi-agent runs currently require a clean base working tree. Parallelism defaults to 1 so local users do not accidentally load several models into RAM; raising `--parallel` is an explicit user choice.
+
 ## Architecture
 
 ```text
