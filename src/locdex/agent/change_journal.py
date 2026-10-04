@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 from dataclasses import dataclass
 from pathlib import Path
@@ -121,6 +122,49 @@ class ChangeJournal:
             except OSError:
                 continue
         return sorted(set(restored))
+
+    def checkpoint_payload(self) -> list[dict[str, Any]]:
+        payload: list[dict[str, Any]] = []
+        for relative in self._mutation_order:
+            entry = self._entries.get(relative)
+            if entry is None:
+                continue
+            candidate = (self.root / relative).resolve()
+            after: bytes | None = None
+            after_kind = "missing"
+            if candidate.is_file():
+                try:
+                    after = candidate.read_bytes()
+                    after_kind = "file"
+                except OSError:
+                    after = None
+            elif candidate.is_dir():
+                after_kind = "directory"
+
+            payload.append(
+                {
+                    "path": relative,
+                    "before_kind": entry.kind,
+                    "before_b64": (
+                        base64.b64encode(entry.before).decode("ascii")
+                        if entry.before is not None
+                        else None
+                    ),
+                    "before_sha256": entry.before_sha256,
+                    "after_kind": after_kind,
+                    "after_b64": (
+                        base64.b64encode(after).decode("ascii")
+                        if after is not None
+                        else None
+                    ),
+                    "after_sha256": (
+                        hashlib.sha256(after).hexdigest()
+                        if after is not None
+                        else None
+                    ),
+                }
+            )
+        return payload
 
     def summary(self) -> list[dict[str, Any]]:
         return [
