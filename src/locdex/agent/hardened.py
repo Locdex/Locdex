@@ -16,6 +16,7 @@ from ..intelligence import (
 )
 from ..models import get_model_profile
 from ..runtime import LlamaCppSession, detect_hardware
+from ..events import EventBus
 from ..sandbox import SandboxMode, SandboxPolicy
 from ..security import PermissionController
 from ..tools import TOOLS
@@ -210,10 +211,23 @@ class _RepairAwareSession:
 
 
 class AgentEngine(BaseAgentEngine):
+    def _event(self, kind: str, **data: Any) -> None:
+        bus = getattr(self, "event_bus", None)
+        if bus is not None:
+            bus.emit(kind, **data)
+
     """Agent loop with mutation rollback and weak-model repair guardrails."""
 
     def __init__(self, model_key: str | None = None):
         super().__init__(model_key=model_key)
+        self.event_bus = event_bus
+        self._event(
+            "agent.started",
+            task=task,
+            model=self.model_key,
+            repo_path=str(Path(repo_path).resolve()),
+            sandbox_mode=str(SandboxMode(sandbox_mode).value),
+        )
         self._repair_required = False
         self._repair_deferrals = 0
         self._mutations_since_validation = 0
@@ -275,6 +289,7 @@ class AgentEngine(BaseAgentEngine):
         args: dict[str, Any],
         progress,
     ) -> dict[str, Any]:
+        self._event("tool.requested", tool=name, args=dict(args))
         sandbox_policy = getattr(self, "sandbox_policy", None)
         definition = TOOLS.get(name)
         if sandbox_policy is not None and definition is not None:
@@ -289,6 +304,12 @@ class AgentEngine(BaseAgentEngine):
                     f"replan without sandbox-denied tool {name}"
                 )
                 self._emit(progress, f"[Sandbox] denied {name}")
+                self._event(
+                    "sandbox.denied",
+                    tool=name,
+                    reason=sandbox_decision.reason,
+                    sandbox_mode=sandbox_policy.mode.value,
+                )
                 return {
                     "error": sandbox_decision.reason,
                     "sandbox_denied": True,
@@ -311,6 +332,11 @@ class AgentEngine(BaseAgentEngine):
                     f"replan without denied tool {name}"
                 )
                 self._emit(progress, f"[Permission] denied {name}")
+                self._event(
+                    "permission.denied",
+                    tool=name,
+                    reason=decision.reason,
+                )
                 return {
                     "error": decision.reason,
                     "permission_denied": True,
@@ -327,6 +353,7 @@ class AgentEngine(BaseAgentEngine):
                 if path:
                     self.task_state.pin_file(str(path))
             self.task_state.set_next_action(f"inspect references for symbol {symbol}")
+            self._event("tool.completed", tool=name, result=result)
             return result
         if name == "find_references":
             self._emit(progress, "[Agent] find_references")
@@ -336,6 +363,7 @@ class AgentEngine(BaseAgentEngine):
                 path = match.get("path")
                 if path:
                     self.task_state.pin_file(str(path))
+            self._event("tool.completed", tool=name, result=result)
             return result
         if name == "get_symbol_source":
             self._emit(progress, "[Agent] get_symbol_source")
@@ -353,7 +381,9 @@ class AgentEngine(BaseAgentEngine):
             self.task_state.set_next_action(
                 f"use exact definition source for {symbol}"
             )
-            return {"matches": matches}
+            result = {"matches": matches}
+            self._event("tool.completed", tool=name, result=result)
+            return result
 
         if name == "get_reference_context":
             self._emit(progress, "[Agent] get_reference_context")
@@ -370,7 +400,9 @@ class AgentEngine(BaseAgentEngine):
                 path = match.get("path")
                 if path:
                     self.task_state.pin_file(str(path))
-            return {"matches": matches}
+            result = {"matches": matches}
+            self._event("tool.completed", tool=name, result=result)
+            return result
 
         if name == "related_files":
             self._emit(progress, "[Agent] related_files")
@@ -381,6 +413,7 @@ class AgentEngine(BaseAgentEngine):
                 path = row.get("path")
                 if path:
                     self.task_state.pin_file(str(path))
+            self._event("tool.completed", tool=name, result=result)
             return result
 
         if name in WORKSPACE_MUTATING_TOOLS:
@@ -546,6 +579,7 @@ class AgentEngine(BaseAgentEngine):
                 f"use exact source from {guarded['path']} for the next decision"
             )
 
+        self._event("tool.completed", tool=name, result=guarded)
         return guarded
 
     def execute(
@@ -560,6 +594,7 @@ class AgentEngine(BaseAgentEngine):
         write_scope: list[str] | None = None,
         permission_controller: PermissionController | None = None,
         sandbox_mode: str | SandboxMode = SandboxMode.WORKSPACE_WRITE,
+        event_bus: EventBus | None = None,
     ) -> dict:
         self._repair_required = False
         self._repair_deferrals = 0
@@ -661,4 +696,11 @@ class AgentEngine(BaseAgentEngine):
         if self._last_context_compaction is not None:
             result["context_tokens_before"] = self._last_context_compaction.before_tokens
             result["context_tokens_after"] = self._last_context_compaction.after_tokens
+        self._event(
+            "agent.completed" if result.get("status") == "completed" else "agent.stopped",
+            status=result.get("status"),
+            summary=result.get("summary"),
+            files_modified=result.get("files_modified") or [],
+            rollback_performed=bool(result.get("rollback_performed")),
+        )
         return result
