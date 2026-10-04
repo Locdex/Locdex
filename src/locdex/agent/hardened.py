@@ -604,6 +604,8 @@ class AgentEngine(BaseAgentEngine):
         self.sandbox_policy = SandboxPolicy(sandbox_mode)
         self.sandbox_mode = self.sandbox_policy.mode.value
         self.verifier.permission_controller = permission_controller
+        self.verifier.sandbox_policy = SandboxPolicy(self.sandbox_mode)
+        self.verifier.sandbox_mode = self.sandbox_mode
         self._write_scope = [
             str(pattern).replace("\\", "/")
             for pattern in (write_scope or [])
