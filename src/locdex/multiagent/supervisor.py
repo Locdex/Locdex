@@ -66,6 +66,7 @@ def _agent_result(
             write_scope=list(definition.write_scope),
             progress=emit,
             permission_controller=permission_controller,
+            sandbox_mode=definition.sandbox_mode,
         )
     except RuntimeExecutionError as exc:
         result = {
@@ -88,6 +89,7 @@ def _agent_result(
         "model": definition.model,
         "mode": definition.mode,
         "permission_mode": definition.permission_mode,
+        "sandbox_mode": definition.sandbox_mode,
         "write_scope": list(definition.write_scope),
         "workspace": workspace.to_dict(),
         "result": result,
