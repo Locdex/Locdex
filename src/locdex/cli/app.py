@@ -16,6 +16,7 @@ from ..models import (
     select_model,
     selected_model_key,
 )
+from ..qualification import qualify_model
 from ..routing import LearnedRouter, RoutingPolicy, RoutingSession, local_candidates, profile_task
 from ..routing.updater import status as router_status, update_from_manifest
 from ..runtime import (
@@ -57,6 +58,14 @@ def build_parser() -> argparse.ArgumentParser:
     install_cmd.add_argument("--force", action="store_true")
     remove_cmd = model_sub.add_parser("remove", help="Remove a Locdex-managed model from cache.")
     remove_cmd.add_argument("key", choices=sorted(MODEL_PROFILES))
+    qualify_cmd = model_sub.add_parser(
+        "qualify",
+        help="Run a reproducible local prompt + coding-agent qualification probe.",
+    )
+    qualify_cmd.add_argument("key", choices=sorted(MODEL_PROFILES))
+    qualify_cmd.add_argument("--max-steps", type=int, default=8)
+    qualify_cmd.add_argument("--force-hardware", action="store_true")
+    qualify_cmd.add_argument("--prompt-only", action="store_true")
 
     prep = sub.add_parser("prepare")
     prep.add_argument("--task", required=True)
@@ -180,6 +189,15 @@ def cli(argv: list[str] | None = None) -> int:
                 removed = remove_model(args.key)
                 _print_json({"model": args.key, "removed": removed})
                 return 0
+            if args.model_action == "qualify":
+                result = qualify_model(
+                    args.key,
+                    max_steps=args.max_steps,
+                    force_hardware=args.force_hardware,
+                    agent_task=not args.prompt_only,
+                )
+                _print_json(result)
+                return 0 if result.get("passed") else 1
         except (ModelInstallError, ValueError) as exc:
             print(f"Locdex model error: {exc}")
             return 1
