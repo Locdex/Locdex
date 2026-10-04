@@ -10,6 +10,7 @@ from ..intelligence import (
     find_symbol,
     get_reference_context,
     get_symbol_source,
+    plan_retrieval,
     related_files,
 )
 from ..models import get_model_profile
@@ -379,6 +380,31 @@ class AgentEngine(BaseAgentEngine):
                 "Relevant verification must pass before completion.",
             ],
         )
+        self.retrieval_plan = plan_retrieval(
+            repo_path,
+            task,
+            max_files=8,
+            source_tokens=1800,
+        )
+        for row in self.retrieval_plan.primary_files:
+            path = row.get("path")
+            if path:
+                self.task_state.pin_file(str(path))
+        for path in self.retrieval_plan.likely_change_files:
+            self.task_state.pin_file(path)
+        for missing in self.retrieval_plan.missing_symbols:
+            self.task_state.add_decision(
+                f"missing local symbol {missing.name} expected in {missing.target_path}"
+            )
+        if self.retrieval_plan.missing_symbols:
+            first = self.retrieval_plan.missing_symbols[0]
+            self.task_state.set_next_action(
+                f"implement or repair {first.name} in {first.target_path} using exact evidence"
+            )
+        elif self.retrieval_plan.likely_change_files:
+            self.task_state.set_next_action(
+                f"inspect exact source in {self.retrieval_plan.likely_change_files[0]}"
+            )
         self._last_context_compaction = None
 
         inner = session or LlamaCppSession(
@@ -401,6 +427,7 @@ class AgentEngine(BaseAgentEngine):
         result["preexisting_changes_touched"] = sorted(preexisting & modified)
         result["preexisting_changes"] = sorted(preexisting - modified)
         result["task_state"] = self.task_state.to_prompt()
+        result["retrieval_plan"] = self.retrieval_plan.to_dict()
         result["context_compactions"] = self.task_state.compactions
         if self._last_context_compaction is not None:
             result["context_tokens_before"] = self._last_context_compaction.before_tokens
