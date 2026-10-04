@@ -36,6 +36,26 @@ Locdex exposes a local model catalog across hardware tiers. `locdex model list` 
 
 Users select models explicitly with `locdex model use <key>` or per task with `locdex task --model <key> ...`. The smoke profile is intentionally not a production recommendation.
 
+## npm installation
+
+Locdex remains a Python runtime, but developers can use the npm wrapper as the distribution entry point:
+
+```bash
+npm install -g @locdex/cli
+locdex --version
+```
+
+The npm package creates a Locdex-owned Python environment and forwards the `locdex` command to the Python core. It does not automatically download models or install the llama.cpp backend. Those remain explicit:
+
+```bash
+locdex runtime install --backend auto
+locdex model list
+locdex model install qwen25-7b
+locdex model use qwen25-7b
+```
+
+The npm wrapper requires Node.js 18+ and Python 3.10–3.12 in its first release. A fully managed Python bootstrap can replace that host-Python requirement later without changing the Python core.
+
 ## User-defined multi-agent runs
 
 Locdex does not impose fixed planner/coder/reviewer roles. Users define each agent's name, task, model, step budget, routing mode, and optional write scope in YAML.
