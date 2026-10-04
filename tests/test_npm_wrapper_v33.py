@@ -80,8 +80,23 @@ def test_npm_launcher_fails_cleanly_when_runtime_missing(tmp_path):
 
 @pytest.mark.skipif(shutil.which("npm") is None, reason="npm is not installed")
 def test_npm_package_can_be_dry_run_packed():
+    npm = shutil.which("npm")
+    assert npm is not None
+
+    if os.name == "nt":
+        comspec = os.environ.get("ComSpec") or "cmd.exe"
+        command = [
+            comspec,
+            "/d",
+            "/s",
+            "/c",
+            f'"{npm}" pack --dry-run --ignore-scripts --json',
+        ]
+    else:
+        command = [npm, "pack", "--dry-run", "--ignore-scripts", "--json"]
+
     process = subprocess.run(
-        ["npm", "pack", "--dry-run", "--ignore-scripts", "--json"],
+        command,
         cwd=NPM,
         capture_output=True,
         text=True,
