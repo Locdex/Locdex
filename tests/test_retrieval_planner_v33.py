@@ -126,3 +126,46 @@ def test_local_submodule_import_is_not_reported_missing(tmp_path):
     missing = detect_missing_local_imports(str(tmp_path))
 
     assert missing == []
+
+
+def test_hardened_engine_seeds_task_state_before_first_model_turn(tmp_path):
+    from locdex.agent.hardened import AgentEngine
+
+    _broken_fixture(tmp_path)
+    engine = AgentEngine(model_key="smoke")
+
+    class InspectingSession:
+        def __init__(self):
+            self.seen = False
+
+        def json_completion(self, messages, schema, **kwargs):
+            self.seen = True
+            decisions = "\n".join(engine.task_state.decisions)
+            assert "missing local symbol multiply expected in calculator.py" in decisions
+            assert "missing local symbol format_sum expected in formatter.py" in decisions
+            assert {"calculator.py", "formatter.py", "test_operations.py"} <= set(
+                engine.task_state.pinned_files
+            )
+            assert engine.task_state.next_action is not None
+            return {
+                "action": "final",
+                "summary": "Inspected retrieval plan.",
+                "confidence": 0.9,
+            }
+
+    session = InspectingSession()
+    result = engine.execute(
+        "Inspect multiply and format_sum dependencies.",
+        str(tmp_path),
+        session=session,
+        max_steps=2,
+    )
+
+    assert session.seen is True
+    assert result["status"] == "completed"
+    missing = {
+        (item["name"], item["target_path"])
+        for item in result["retrieval_plan"]["missing_symbols"]
+    }
+    assert ("multiply", "calculator.py") in missing
+    assert ("format_sum", "formatter.py") in missing
