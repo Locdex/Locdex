@@ -12,6 +12,7 @@ from .executor import (
     search_code,
     write_file,
 )
+from .python_symbols import insert_after_symbol, replace_symbol
 from .registry import TOOLS, ToolDefinition
 
 __all__ = [
@@ -25,6 +26,8 @@ __all__ = [
     "list_files",
     "read_file",
     "replace_in_file",
+    "replace_symbol",
+    "insert_after_symbol",
     "run_command",
     "run_tests",
     "search_code",
