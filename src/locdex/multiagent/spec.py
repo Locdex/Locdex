@@ -8,6 +8,7 @@ from typing import Any
 import yaml
 
 from ..models import MODEL_PROFILES
+from ..sandbox import SandboxMode
 from ..security import PermissionMode
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -26,6 +27,7 @@ class AgentDefinition:
     max_steps: int = 8
     mode: str = "balanced"
     permission_mode: str = PermissionMode.ASK.value
+    sandbox_mode: str = SandboxMode.WORKSPACE_WRITE.value
     write_scope: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
@@ -36,6 +38,7 @@ class AgentDefinition:
             "max_steps": self.max_steps,
             "mode": self.mode,
             "permission_mode": self.permission_mode,
+            "sandbox_mode": self.sandbox_mode,
             "write_scope": list(self.write_scope),
         }
 
@@ -105,6 +108,19 @@ def _definition(raw: dict[str, Any], defaults: dict[str, Any]) -> AgentDefinitio
             f"{', '.join(sorted(permission_choices))}"
         )
 
+    sandbox_mode = str(
+        raw.get(
+            "sandbox_mode",
+            defaults.get("sandbox_mode", SandboxMode.WORKSPACE_WRITE.value),
+        )
+    ).strip().lower()
+    sandbox_choices = {mode.value for mode in SandboxMode}
+    if sandbox_mode not in sandbox_choices:
+        raise AgentSpecError(
+            f"Agent {name!r} sandbox_mode must be one of: "
+            f"{', '.join(sorted(sandbox_choices))}"
+        )
+
     raw_scope = raw.get("write_scope", defaults.get("write_scope", []))
     if raw_scope is None:
         raw_scope = []
@@ -123,6 +139,7 @@ def _definition(raw: dict[str, Any], defaults: dict[str, Any]) -> AgentDefinitio
         max_steps=max_steps,
         mode=mode,
         permission_mode=permission_mode,
+        sandbox_mode=sandbox_mode,
         write_scope=scope,
     )
 
