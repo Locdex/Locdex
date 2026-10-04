@@ -85,6 +85,7 @@ def main() -> int:
             "locdex/context_manager.py",
             "locdex/task_state.py",
             "locdex/intelligence/graph.py",
+            "locdex/intelligence/planner.py",
             "locdex/intelligence/source.py",
             "locdex/models/manager.py",
             "locdex/models/profiles.py",
