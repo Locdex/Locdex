@@ -5,7 +5,13 @@ from pathlib import Path
 from typing import Any
 
 from ..context_manager import ContextManagerConfig, maybe_compact
-from ..intelligence import find_references, find_symbol, related_files
+from ..intelligence import (
+    find_references,
+    find_symbol,
+    get_reference_context,
+    get_symbol_source,
+    related_files,
+)
 from ..models import get_model_profile
 from ..runtime import LlamaCppSession, detect_hardware
 from ..task_state import TaskState
@@ -214,6 +220,41 @@ class AgentEngine(BaseAgentEngine):
                 if path:
                     self.task_state.pin_file(str(path))
             return result
+        if name == "get_symbol_source":
+            self._emit(progress, "[Agent] get_symbol_source")
+            symbol = str(args.get("name", "")).strip()
+            context_lines = int(args.get("context_lines", 1))
+            matches = get_symbol_source(
+                repo_path,
+                symbol,
+                context_lines=context_lines,
+            )
+            for match in matches[:6]:
+                path = match.get("path")
+                if path:
+                    self.task_state.pin_file(str(path))
+            self.task_state.set_next_action(
+                f"use exact definition source for {symbol}"
+            )
+            return {"matches": matches}
+
+        if name == "get_reference_context":
+            self._emit(progress, "[Agent] get_reference_context")
+            symbol = str(args.get("name", "")).strip()
+            context_lines = int(args.get("context_lines", 2))
+            limit = int(args.get("limit", 12))
+            matches = get_reference_context(
+                repo_path,
+                symbol,
+                context_lines=context_lines,
+                limit=limit,
+            )
+            for match in matches[:8]:
+                path = match.get("path")
+                if path:
+                    self.task_state.pin_file(str(path))
+            return {"matches": matches}
+
         if name == "related_files":
             self._emit(progress, "[Agent] related_files")
             query = str(args.get("task", task))
