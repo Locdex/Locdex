@@ -109,7 +109,8 @@ def test_npm_package_can_be_dry_run_packed():
     )
     assert process.returncode == 0, process.stderr
     payload = json.loads(process.stdout)
-    files = {row["path"] for row in payload[0]["files"]}
+    package = payload[0] if isinstance(payload, list) else payload
+    files = {row["path"] for row in package["files"]}
     assert "bin/locdex.js" in files
     assert "scripts/install.js" in files
     assert "scripts/runtime.js" in files
