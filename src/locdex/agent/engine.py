@@ -257,6 +257,7 @@ class AgentEngine:
                 name,
                 args,
                 explicit_user_intent=explicit_intent,
+                sandbox_mode=getattr(self, "sandbox_mode", None),
             )
         except ToolError as exc:
             return {"error": str(exc)}
