@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 import difflib
 import shlex
 from dataclasses import dataclass
@@ -56,12 +55,27 @@ def _safe_workspace_path(repo_path: str, relative: str) -> Path | None:
     return candidate
 
 
+MAX_PERMISSION_PREVIEW_LINES = 40
+MAX_PERMISSION_PREVIEW_CHARS = 4000
+
+
+def _bounded_text(value: str) -> str:
+    lines = value.splitlines()
+    truncated = len(lines) > MAX_PERMISSION_PREVIEW_LINES
+    rendered = "\n".join(lines[:MAX_PERMISSION_PREVIEW_LINES])
+    if len(rendered) > MAX_PERMISSION_PREVIEW_CHARS:
+        rendered = rendered[:MAX_PERMISSION_PREVIEW_CHARS]
+        truncated = True
+    if truncated:
+        rendered += "\n... details truncated ..."
+    return rendered
+
+
 def _bounded_diff(
     before: str,
     after: str,
     *,
     path: str,
-    max_lines: int = 120,
 ) -> str:
     lines = list(
         difflib.unified_diff(
@@ -72,41 +86,14 @@ def _bounded_diff(
             lineterm="",
         )
     )
-    if not lines:
-        return "(no textual diff)"
-    if len(lines) > max_lines:
-        lines = lines[:max_lines] + ["... diff truncated ..."]
-    return "\n".join(lines)
+    return _bounded_text("\n".join(lines) or "(no textual diff)")
 
 
-def _symbol_source(path: Path, name: str) -> str | None:
-    try:
-        source = path.read_text(encoding="utf-8")
-        tree = ast.parse(source)
-    except (OSError, UnicodeDecodeError, SyntaxError):
-        return None
-    lines = source.splitlines()
-    for node in tree.body:
-        if not isinstance(
-            node,
-            (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
-        ):
-            continue
-        if getattr(node, "name", None) != name:
-            continue
-        start = int(getattr(node, "lineno", 1) or 1)
-        decorators = getattr(node, "decorator_list", None) or []
-        if decorators:
-            start = min(
-                start,
-                *(
-                    int(getattr(item, "lineno", start) or start)
-                    for item in decorators
-                ),
-            )
-        end = int(getattr(node, "end_lineno", start) or start)
-        return "\n".join(lines[start - 1 : end])
-    return None
+def _command_text(args: dict[str, Any]) -> str:
+    argv = args.get("argv") or []
+    if not isinstance(argv, list):
+        return "workspace command"
+    return shlex.join(str(item) for item in argv)
 
 
 def build_tool_preview(
@@ -114,73 +101,43 @@ def build_tool_preview(
     tool: str,
     args: dict[str, Any],
 ) -> str:
+    del repo_path
     path_text = str(args.get("path", "")).replace("\\", "/")
 
     if tool == "write_file" and path_text:
-        target = _safe_workspace_path(repo_path, path_text)
-        before = ""
-        if target is not None and target.is_file():
-            try:
-                before = target.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                before = "<existing non-UTF-8 file>"
-        after = str(args.get("content", ""))
-        return _bounded_diff(before, after, path=path_text)
+        content = str(args.get("content", ""))
+        excerpt = _bounded_text(content)
+        return (
+            f"Write {path_text} ({len(content.encode('utf-8'))} bytes)."
+            + (f"\n\n{excerpt}" if excerpt else "")
+        )
 
     if tool == "replace_in_file" and path_text:
-        target = _safe_workspace_path(repo_path, path_text)
-        if target is not None and target.is_file():
-            try:
-                before = target.read_text(encoding="utf-8")
-                old = str(args.get("old", ""))
-                new = str(args.get("new", ""))
-                count = max(1, int(args.get("count", 1)))
-                after = before.replace(old, new, count)
-                return _bounded_diff(before, after, path=path_text)
-            except (OSError, UnicodeDecodeError, ValueError):
-                pass
-        return f"Edit {path_text} with an exact text replacement."
+        old = str(args.get("old", ""))
+        new = str(args.get("new", ""))
+        return _bounded_diff(old, new, path=path_text)
 
     if tool == "replace_symbol" and path_text:
-        target = _safe_workspace_path(repo_path, path_text)
         symbol = str(args.get("name", ""))
-        after = str(args.get("new_source", ""))
-        before = (
-            _symbol_source(target, symbol)
-            if target is not None and target.is_file()
-            else None
-        )
-        if before is not None:
-            return _bounded_diff(
-                before + "\n",
-                after.strip("\n") + "\n",
-                path=f"{path_text}::{symbol}",
-            )
+        new_source = _bounded_text(str(args.get("new_source", "")))
         return (
-            f"Replace Python symbol {symbol!r} in {path_text} with:\n"
-            f"{after[:4000]}"
+            f"Replace Python symbol {symbol!r} in {path_text}."
+            + (f"\n\n{new_source}" if new_source else "")
         )
 
     if tool == "insert_after_symbol" and path_text:
         anchor = str(args.get("anchor", ""))
-        new_source = str(args.get("new_source", ""))
+        new_source = _bounded_text(str(args.get("new_source", "")))
         return (
-            f"Insert after Python symbol {anchor!r} in {path_text}:\n"
-            + "\n".join(
-                f"+ {line}" for line in new_source.splitlines()
-            )[:4000]
+            f"Insert after Python symbol {anchor!r} in {path_text}."
+            + (f"\n\n{new_source}" if new_source else "")
         )
 
     if tool == "delete_path" and path_text:
         return f"Delete workspace path: {path_text}"
 
     if tool == "run_command":
-        argv = args.get("argv") or []
-        if isinstance(argv, list):
-            return "Run command:\n  " + shlex.join(
-                str(item) for item in argv
-            )
-        return "Run a workspace command."
+        return f"Run command:\n  {_bounded_text(_command_text(args))}"
 
     if tool == "run_tests":
         return "Run the detected project test suite."
@@ -191,13 +148,75 @@ def build_tool_preview(
             for key, value in args.items()
             if value not in (None, "", [], {})
         )
-        return (
+        return _bounded_text(
             f"Git action: {tool}"
             + (f"\n{details}" if details else "")
         )
 
-    return f"Tool: {tool}\nArguments: {args}"
+    return _bounded_text(f"Tool: {tool}\nArguments: {args}")
 
+
+def _shorten(value: str, limit: int = 96) -> str:
+    compact = " ".join(value.split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: max(1, limit - 1)] + "…"
+
+
+def format_permission_request(request: PermissionRequest) -> str:
+    path = str(request.args.get("path", "")).replace("\\", "/").strip()
+
+    if request.risk is RiskClass.READ:
+        target = path or "the workspace"
+        return f"Allow Locdex to read {target}?"
+
+    if request.risk is RiskClass.WRITE:
+        if request.tool == "delete_path":
+            return f"Allow Locdex to delete {path or 'a workspace path'}?"
+        return f"Allow Locdex to edit {path or 'workspace files'}?"
+
+    if request.risk is RiskClass.EXECUTE:
+        if request.tool == "run_tests":
+            return "Allow Locdex to run project tests?"
+        if request.tool == "run_command":
+            return f"Allow Locdex to run: {_shorten(_command_text(request.args))}?"
+        return f"Allow Locdex to run {request.tool}?"
+
+    if request.risk is RiskClass.GIT_WRITE:
+        remote = str(request.args.get("remote", "origin")).strip() or "origin"
+        if request.tool == "git_commit":
+            return "Allow Locdex to create a Git commit?"
+        if request.tool == "git_push":
+            return f"Allow Locdex to push to {remote}?"
+        if request.tool == "git_pull":
+            return f"Allow Locdex to pull from {remote}?"
+        if request.tool == "git_add":
+            return "Allow Locdex to stage Git changes?"
+        return f"Allow Locdex to perform {request.tool}?"
+
+    if request.risk is RiskClass.NETWORK:
+        server = str(request.args.get("server", "")).strip()
+        tool = str(request.args.get("tool", "")).strip()
+        target = "/".join(value for value in (server, tool) if value)
+        if target:
+            return f"Allow Locdex to use external tool {target}?"
+        return "Allow Locdex network access for this action?"
+
+    return f"Allow Locdex to use {request.tool}?"
+
+
+def format_permission_details(request: PermissionRequest) -> str:
+    rows = [
+        f"Tool: {request.tool}",
+        f"Risk: {request.risk.value}",
+    ]
+    if request.purpose:
+        rows.append(f"Reason: {request.purpose}")
+    if request.access:
+        rows.append("Access: " + ", ".join(request.access))
+    if request.preview:
+        rows.extend(["", "Details:", request.preview])
+    return "\n".join(rows)
 
 def permission_cache_key(
     tool: str,
@@ -283,19 +302,6 @@ def _request_access(
 
     return tuple(dict.fromkeys(access))
 
-
-def format_permission_request(request: PermissionRequest) -> str:
-    rows = [
-        f"Locdex wants to use: {request.tool}",
-        f"Risk: {request.risk.value}",
-    ]
-    if request.purpose:
-        rows.extend(["", "Reason:", f"  {request.purpose}"])
-    if request.access:
-        rows.extend(["", "Access:"])
-        rows.extend(f"  • {item}" for item in request.access)
-    rows.extend(["", "Preview:", request.preview])
-    return "\n".join(rows)
 
 
 class PermissionController:
