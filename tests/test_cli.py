@@ -157,3 +157,16 @@ def test_cli_resume_session():
     )
     assert args.command == "resume"
     assert args.session_id == "abc123"
+
+
+def test_cli_steer_and_cancel():
+    steer = build_parser().parse_args(
+        ["steer", "abc123", "Do not touch migrations."]
+    )
+    assert steer.command == "steer"
+    assert steer.session_id == "abc123"
+    assert steer.message == "Do not touch migrations."
+
+    cancel = build_parser().parse_args(["cancel", "abc123"])
+    assert cancel.command == "cancel"
+    assert cancel.session_id == "abc123"
