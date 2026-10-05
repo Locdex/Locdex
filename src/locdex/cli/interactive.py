@@ -1,17 +1,24 @@
 from __future__ import annotations
 
+import asyncio
+import queue
 from pathlib import Path
 from typing import Any
+
+from prompt_toolkit import PromptSession
+from prompt_toolkit.patch_stdout import patch_stdout
 
 from ..agent import AgentEngine
 from ..events import AgentEvent, EventBus
 from ..models import MODEL_PROFILES, selected_model_key
+from ..routing.execution import execute_with_escalation
 from ..sandbox import SandboxMode, detect_sandbox_capabilities
 from ..security import (
     ApprovalChoice,
     PermissionController,
     PermissionMode,
     PermissionRequest,
+    format_permission_request,
 )
 from ..session import (
     ChangeSet,
@@ -26,62 +33,119 @@ from ..session import (
 )
 
 
-def interactive_permission(request: PermissionRequest) -> ApprovalChoice:
+def _parse_approval(value: str) -> ApprovalChoice | None:
+    choice = value.strip().lower()
+    if choice in {"y", "yes"}:
+        return ApprovalChoice.ALLOW_ONCE
+    if choice in {"a", "always", "session"}:
+        return ApprovalChoice.ALLOW_SESSION
+    if choice in {"", "n", "no", "deny"}:
+        return ApprovalChoice.DENY
+    return None
+
+
+def interactive_permission(
+    request: PermissionRequest,
+) -> ApprovalChoice:
     print()
     print("=" * 72)
-    print(f"Permission required: {request.risk.value} | {request.tool}")
+    print(format_permission_request(request))
     print("-" * 72)
-    print(request.preview)
-    print("-" * 72)
-    print("[y] allow once   [a] allow similar actions this session   [n] deny")
+    print(
+        "[y] allow once   "
+        "[a] allow similar actions this session   "
+        "[n] deny"
+    )
     while True:
         try:
-            choice = input("Choice [y/a/N]: ").strip().lower()
+            raw = input("Choice [y/a/N]: ")
         except (EOFError, KeyboardInterrupt):
             print()
             return ApprovalChoice.DENY
-        if choice in {"y", "yes"}:
-            return ApprovalChoice.ALLOW_ONCE
-        if choice in {"a", "always", "session"}:
-            return ApprovalChoice.ALLOW_SESSION
-        if choice in {"", "n", "no", "deny"}:
-            return ApprovalChoice.DENY
+        parsed = _parse_approval(raw)
+        if parsed is not None:
+            return parsed
         print("Enter y, a, or n.")
+
+
+class _ApprovalBroker:
+    def __init__(self, loop: asyncio.AbstractEventLoop):
+        self.loop = loop
+        self.pending: asyncio.Queue[
+            tuple[PermissionRequest, queue.Queue[ApprovalChoice]]
+        ] = asyncio.Queue()
+
+    def request(
+        self,
+        request: PermissionRequest,
+    ) -> ApprovalChoice:
+        response: queue.Queue[ApprovalChoice] = queue.Queue(maxsize=1)
+        future = asyncio.run_coroutine_threadsafe(
+            self.pending.put((request, response)),
+            self.loop,
+        )
+        future.result()
+        return response.get()
+
+    @staticmethod
+    def resolve(
+        response: queue.Queue[ApprovalChoice],
+        choice: ApprovalChoice,
+    ) -> None:
+        response.put(choice)
 
 
 def _render_event(event: AgentEvent) -> None:
     data = event.data
     if event.kind == "tool.requested":
         tool = str(data.get("tool", "tool"))
-        if tool in {"read_file", "list_files", "search_code", "find_symbol", "find_references"}:
+        if tool in {
+            "read_file",
+            "list_files",
+            "search_code",
+            "find_symbol",
+            "find_references",
+        }:
             print(f"  ● {tool}")
-        elif tool in {"run_tests", "run_command"}:
-            print(f"  ◆ {tool}")
-        elif tool.startswith("git_"):
-            print(f"  ◆ {tool}")
         else:
             print(f"  ◆ {tool}")
     elif event.kind == "sandbox.denied":
-        print(f"  ⛔ sandbox denied {data.get('tool')}: {data.get('reason')}")
+        print(
+            f"  ⛔ sandbox denied {data.get('tool')}: "
+            f"{data.get('reason')}"
+        )
     elif event.kind == "permission.denied":
-        print(f"  ⛔ permission denied {data.get('tool')}")
+        print(
+            f"  ⛔ permission denied {data.get('tool')}"
+        )
     elif event.kind == "agent.stopped":
-        print(f"  ■ agent stopped: {data.get('status')}")
+        print(
+            f"  ■ agent stopped: {data.get('status')}"
+        )
 
 
 def _session_context(state: SessionState) -> str:
     rows: list[str] = []
     if state.notes:
         rows.append("Persistent user/session notes:")
-        rows.extend(f"- {note}" for note in state.notes[-12:])
+        rows.extend(
+            f"- {note}"
+            for note in state.notes[-12:]
+        )
 
     if state.tasks:
         rows.append("Recent completed/attempted tasks:")
         for item in state.tasks[-6:]:
-            files = ", ".join(item.files_modified) if item.files_modified else "none"
+            files = (
+                ", ".join(item.files_modified)
+                if item.files_modified
+                else "none"
+            )
             rows.append(
-                f"- {item.status}: {item.task} | summary={item.summary} | "
-                f"files={files} | verification={item.verification_passed}"
+                f"- {item.status}: {item.task} | "
+                f"summary={item.summary} | "
+                f"files={files} | "
+                f"verification={item.verification_passed}"
             )
 
     return "\n".join(rows)[-8000:]
@@ -97,7 +161,8 @@ def _print_header(state: SessionState) -> None:
     print(f"Permissions: {state.permission_mode}")
     print(
         f"Sandbox: {state.sandbox_mode} "
-        f"({caps.backend}; OS isolation={'yes' if caps.os_isolation else 'no'})"
+        f"({caps.backend}; "
+        f"OS isolation={'yes' if caps.os_isolation else 'no'})"
     )
     print("Type /help for commands.")
     print()
@@ -114,14 +179,19 @@ Commands:
   /sandbox [mode]             read-only | workspace-write | workspace-network | unrestricted.
   /diff                       Show the latest completed ChangeSet diff.
   /checkpoints                List session checkpoints.
-  /undo [checkpoint-id]       Undo a completed Locdex checkpoint if files have not diverged.
+  /undo [checkpoint-id]       Undo a completed checkpoint if files have not diverged.
   /sessions                   List recent Locdex sessions.
   /note <text>                Persist a session constraint/note.
   /compact                    Deterministically compact older task history.
   /new                        Start a new session for this repository.
   /exit                       Save and exit.
 
-Any other input is executed as a coding-agent task.
+During an active agent run:
+  type text                    Steer the active agent in the same terminal.
+  /cancel                     Cancel and roll back the active run.
+  /status                     Show the current session and execution policy.
+
+Any other idle input is executed as a coding-agent task.
 """.strip()
     )
 
@@ -135,13 +205,20 @@ def _compact_state(state: SessionState) -> None:
         f"{item.status}:{item.task[:80]}"
         for item in older[-12:]
     )
-    state.notes.append("Compacted earlier task history: " + summary)
+    state.notes.append(
+        "Compacted earlier task history: " + summary
+    )
     state.tasks = state.tasks[-6:]
     state.save()
-    print(f"Compacted {len(older)} older task record(s).")
+    print(
+        f"Compacted {len(older)} older task record(s)."
+    )
 
 
-def _find_resume_session(repo_path: str, session_id: str | None) -> SessionState | None:
+def _find_resume_session(
+    repo_path: str,
+    session_id: str | None,
+) -> SessionState | None:
     if session_id:
         return SessionState.load(session_id)
     root = str(Path(repo_path).resolve())
@@ -151,6 +228,210 @@ def _find_resume_session(repo_path: str, session_id: str | None) -> SessionState
     return None
 
 
+def _print_active_status(state: SessionState) -> None:
+    caps = detect_sandbox_capabilities()
+    print(
+        f"session={state.session_id} "
+        f"model={state.model} "
+        f"permissions={state.permission_mode} "
+        f"sandbox={state.sandbox_mode} "
+        f"backend={caps.backend}"
+    )
+
+
+async def _active_task(
+    state: SessionState,
+    raw: str,
+) -> tuple[dict[str, Any] | None, AgentEngine | None]:
+    loop = asyncio.get_running_loop()
+    broker = _ApprovalBroker(loop)
+    steering_queue = PersistentSteeringQueue(
+        state.session_id
+    )
+    steering_queue.reset_cancel()
+    steering_queue.drain()
+
+    permission_controller = PermissionController(
+        state.permission_mode,
+        approval_callback=broker.request,
+    )
+    bus = EventBus()
+    bus.subscribe(_render_event)
+    engine = AgentEngine(model_key=state.model)
+
+    def execute() -> dict[str, Any]:
+        return execute_with_escalation(
+            engine,
+            raw,
+            state.repo_path,
+            max_steps=12,
+            routing_mode="balanced",
+            permission_controller=permission_controller,
+            sandbox_mode=state.sandbox_mode,
+            event_bus=bus,
+            additional_context=_session_context(state),
+            steering_queue=steering_queue,
+            progress=None,
+        )
+
+    worker = loop.run_in_executor(None, execute)
+    prompt = PromptSession()
+    print()
+    print(
+        "Agent running. Type to steer it; "
+        "use /cancel to stop."
+    )
+
+    with patch_stdout(raw=True):
+        while not worker.done():
+            input_task = asyncio.create_task(
+                prompt.prompt_async("locdex[working]> ")
+            )
+            approval_task = asyncio.create_task(
+                broker.pending.get()
+            )
+            done, pending = await asyncio.wait(
+                {worker, input_task, approval_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            if worker in done:
+                for task in pending:
+                    task.cancel()
+                break
+
+            if approval_task in done:
+                input_task.cancel()
+                try:
+                    await input_task
+                except (
+                    asyncio.CancelledError,
+                    EOFError,
+                    KeyboardInterrupt,
+                ):
+                    pass
+                request, response = approval_task.result()
+                print()
+                print("=" * 72)
+                print(format_permission_request(request))
+                print("-" * 72)
+                print(
+                    "[y] allow once   "
+                    "[a] allow similar actions this session   "
+                    "[n] deny"
+                )
+                while True:
+                    try:
+                        raw_choice = await prompt.prompt_async(
+                            "Choice [y/a/N]: "
+                        )
+                    except (EOFError, KeyboardInterrupt):
+                        raw_choice = "n"
+                    choice = _parse_approval(raw_choice)
+                    if choice is not None:
+                        broker.resolve(response, choice)
+                        break
+                    print("Enter y, a, or n.")
+                continue
+
+            if input_task in done:
+                approval_task.cancel()
+                try:
+                    await approval_task
+                except asyncio.CancelledError:
+                    pass
+                try:
+                    message = input_task.result().strip()
+                except (EOFError, KeyboardInterrupt):
+                    message = "/cancel"
+
+                if not message:
+                    continue
+                if message.lower() == "/cancel":
+                    steering_queue.cancel()
+                    print("Cancellation requested.")
+                    continue
+                if message.lower() == "/status":
+                    _print_active_status(state)
+                    continue
+                if message.lower() in {"/help", "/?"}:
+                    print(
+                        "While working: type steering text, "
+                        "/status, or /cancel."
+                    )
+                    continue
+                if message.startswith("/"):
+                    print(
+                        "That command is available when the "
+                        "current task finishes. Use /cancel first "
+                        "if you need to change execution policy."
+                    )
+                    continue
+                steering_queue.submit(message)
+                print("Steering applied to the active run.")
+
+    try:
+        return await worker, engine
+    except Exception as exc:  # noqa: BLE001
+        print(f"Locdex agent error: {exc}")
+        return None, engine
+
+
+def _record_result(
+    state: SessionState,
+    raw: str,
+    result: dict[str, Any],
+    engine: AgentEngine,
+) -> None:
+    changeset = ChangeSet.from_result(result)
+    checkpoint_id: str | None = None
+    if result.get("status") == "completed" and changeset.files:
+        checkpoint = create_checkpoint(
+            session_id=state.session_id,
+            repo_path=state.repo_path,
+            journal_payload=engine.change_journal.checkpoint_payload(),
+            task=raw,
+        )
+        if checkpoint is not None:
+            checkpoint_id = checkpoint.checkpoint_id
+
+    state.latest_diff = changeset.diff
+    state.add_task(
+        SessionTask(
+            task=raw,
+            status=str(result.get("status", "unknown")),
+            model=state.model,
+            sandbox_mode=state.sandbox_mode,
+            permission_mode=state.permission_mode,
+            summary=str(result.get("summary", "")),
+            files_modified=list(changeset.files),
+            verification_passed=changeset.verification_passed,
+            checkpoint_id=checkpoint_id,
+        )
+    )
+    state.save()
+
+    print()
+    print(
+        str(result.get("summary") or "Task finished.")
+    )
+    print(changeset.render_summary())
+    if result.get("route") == "cloud":
+        print(
+            "Route: configured cloud fallback "
+            f"({result.get('cloud_provider')}/"
+            f"{result.get('cloud_model')})"
+        )
+    elif result.get("cloud_escalation", {}).get("reason"):
+        print(
+            "Cloud fallback: "
+            + str(result["cloud_escalation"]["reason"])
+        )
+    if checkpoint_id:
+        print(f"Checkpoint: {checkpoint_id}")
+    print()
+
+
 def run_interactive(
     repo_path: str = ".",
     *,
@@ -158,11 +439,17 @@ def run_interactive(
 ) -> int:
     root = Path(repo_path).resolve()
     if not root.is_dir():
-        print(f"Locdex session error: repository does not exist: {root}")
+        print(
+            f"Locdex session error: repository does not exist: "
+            f"{root}"
+        )
         return 1
 
     try:
-        state = _find_resume_session(str(root), resume_id)
+        state = _find_resume_session(
+            str(root),
+            resume_id,
+        )
     except (FileNotFoundError, ValueError) as exc:
         print(f"Locdex session error: {exc}")
         return 1
@@ -203,23 +490,40 @@ def run_interactive(
                 print(f"session={state.session_id}")
                 print(f"repo={state.repo_path}")
                 print(f"model={state.model}")
-                print(f"permissions={state.permission_mode}")
+                print(
+                    f"permissions={state.permission_mode}"
+                )
                 print(f"sandbox={state.sandbox_mode}")
                 print(
                     f"sandbox_backend={caps.backend} "
                     f"os_isolation={caps.os_isolation} "
+                    f"process_isolation={caps.process_isolation} "
                     f"network_isolation={caps.network_isolation}"
                 )
-                print(f"tasks={len(state.tasks)} checkpoints={len(list_checkpoints(state.session_id))}")
+                print(
+                    f"tasks={len(state.tasks)} "
+                    f"checkpoints="
+                    f"{len(list_checkpoints(state.session_id))}"
+                )
                 continue
             if command == "/model":
                 if not value:
                     print(f"Current model: {state.model}")
-                    print("Available: " + ", ".join(sorted(MODEL_PROFILES)))
+                    print(
+                        "Available: "
+                        + ", ".join(
+                            sorted(MODEL_PROFILES)
+                        )
+                    )
                     continue
                 key = value.lower()
                 if key not in MODEL_PROFILES:
-                    print("Unknown model. Available: " + ", ".join(sorted(MODEL_PROFILES)))
+                    print(
+                        "Unknown model. Available: "
+                        + ", ".join(
+                            sorted(MODEL_PROFILES)
+                        )
+                    )
                     continue
                 state.model = key
                 state.save()
@@ -227,76 +531,140 @@ def run_interactive(
                 continue
             if command == "/permissions":
                 if not value:
-                    print(f"Permission mode: {state.permission_mode}")
+                    print(
+                        f"Permission mode: "
+                        f"{state.permission_mode}"
+                    )
                     continue
                 try:
                     mode = PermissionMode(value)
                 except ValueError:
-                    print("Choose: " + ", ".join(mode.value for mode in PermissionMode))
+                    print(
+                        "Choose: "
+                        + ", ".join(
+                            item.value
+                            for item in PermissionMode
+                        )
+                    )
                     continue
                 state.permission_mode = mode.value
                 state.save()
-                print(f"Permission mode set to {mode.value}.")
+                print(
+                    f"Permission mode set to "
+                    f"{mode.value}."
+                )
                 continue
             if command == "/sandbox":
                 if not value:
-                    print(f"Sandbox mode: {state.sandbox_mode}")
+                    print(
+                        f"Sandbox mode: "
+                        f"{state.sandbox_mode}"
+                    )
                     continue
                 try:
                     mode = SandboxMode(value)
                 except ValueError:
-                    print("Choose: " + ", ".join(mode.value for mode in SandboxMode))
+                    print(
+                        "Choose: "
+                        + ", ".join(
+                            item.value
+                            for item in SandboxMode
+                        )
+                    )
                     continue
                 state.sandbox_mode = mode.value
                 state.save()
-                print(f"Sandbox mode set to {mode.value}.")
+                print(
+                    f"Sandbox mode set to "
+                    f"{mode.value}."
+                )
                 continue
             if command == "/diff":
-                print(state.latest_diff or "No completed ChangeSet diff in this session.")
+                print(
+                    state.latest_diff
+                    or "No completed ChangeSet diff "
+                    "in this session."
+                )
                 continue
             if command == "/checkpoints":
-                rows = list_checkpoints(state.session_id)
+                rows = list_checkpoints(
+                    state.session_id
+                )
                 if not rows:
                     print("No checkpoints.")
                 for row in rows:
                     print(
-                        f"{row.checkpoint_id} | {row.created_at} | "
-                        f"{len(row.files)} file(s) | {row.task[:80]}"
+                        f"{row.checkpoint_id} | "
+                        f"{row.created_at} | "
+                        f"{len(row.files)} file(s) | "
+                        f"{row.task[:80]}"
                     )
                 continue
             if command == "/undo":
-                checkpoint_id = value or state.latest_checkpoint_id
+                checkpoint_id = (
+                    value
+                    or state.latest_checkpoint_id
+                )
                 if not checkpoint_id:
-                    print("No checkpoint available to undo.")
+                    print(
+                        "No checkpoint available to undo."
+                    )
                     continue
                 try:
-                    checkpoint = load_checkpoint(state.session_id, checkpoint_id)
+                    checkpoint = load_checkpoint(
+                        state.session_id,
+                        checkpoint_id,
+                    )
                     outcome = undo_checkpoint(checkpoint)
-                except (FileNotFoundError, ValueError) as exc:
+                except (
+                    FileNotFoundError,
+                    ValueError,
+                ) as exc:
                     print(f"Undo failed: {exc}")
                     continue
                 if outcome["ok"]:
-                    print("Restored: " + ", ".join(outcome["restored"]))
-                    state.add_note(f"Checkpoint {checkpoint_id} was undone.")
+                    print(
+                        "Restored: "
+                        + ", ".join(outcome["restored"])
+                    )
+                    state.add_note(
+                        f"Checkpoint {checkpoint_id} "
+                        "was undone."
+                    )
                     state.save()
                 else:
                     print(
                         "Undo stopped because files diverged: "
-                        + ", ".join(outcome["conflicts"])
+                        + ", ".join(
+                            outcome["conflicts"]
+                        )
                     )
-                    print("Review those files before forcing any restore.")
+                    print(
+                        "Review those files before forcing "
+                        "any restore."
+                    )
                 continue
             if command == "/sessions":
                 for item in list_sessions(limit=20):
-                    marker = "*" if item.session_id == state.session_id else " "
+                    marker = (
+                        "*"
+                        if item.session_id
+                        == state.session_id
+                        else " "
+                    )
                     print(
-                        f"{marker} {item.session_id} | {item.updated_at} | "
-                        f"{item.model} | {item.repo_path}"
+                        f"{marker} {item.session_id} | "
+                        f"{item.updated_at} | "
+                        f"{item.model} | "
+                        f"{item.repo_path}"
                     )
                 continue
             if command == "/note":
                 if not value:
-                    print("Usage: /note <persistent constraint or reminder>")
+                    print(
+                        "Usage: /note <persistent "
+                        "constraint or reminder>"
+                    )
                     continue
                 state.add_note(value)
                 state.save()
@@ -317,76 +685,20 @@ def run_interactive(
                 _print_header(state)
                 continue
 
-            print(f"Unknown command: {command}. Type /help.")
+            print(
+                f"Unknown command: {command}. "
+                "Type /help."
+            )
             continue
 
-        steering_queue = PersistentSteeringQueue(state.session_id)
-        steering_queue.reset_cancel()
-        # Drain stale steering left from a previous completed run. New messages
-        # submitted after execution begins are consumed between model turns.
-        steering_queue.drain()
-
-        permission_controller = PermissionController(
-            state.permission_mode,
-            approval_callback=(
-                interactive_permission
-                if state.permission_mode == PermissionMode.ASK.value
-                else None
-            ),
+        result, engine = asyncio.run(
+            _active_task(state, raw)
         )
-        bus = EventBus()
-        bus.subscribe(_render_event)
-        engine = AgentEngine(model_key=state.model)
-
-        print()
-        try:
-            result = engine.execute(
-                raw,
-                state.repo_path,
-                max_steps=12,
-                routing_mode="balanced",
-                permission_controller=permission_controller,
-                sandbox_mode=state.sandbox_mode,
-                event_bus=bus,
-                additional_context=_session_context(state),
-                steering_queue=steering_queue,
-                progress=None,
-            )
-        except Exception as exc:  # noqa: BLE001
-            print(f"Locdex agent error: {exc}")
+        if result is None or engine is None:
             continue
-
-        changeset = ChangeSet.from_result(result)
-        checkpoint_id: str | None = None
-        if result.get("status") == "completed" and changeset.files:
-            checkpoint = create_checkpoint(
-                session_id=state.session_id,
-                repo_path=state.repo_path,
-                journal_payload=engine.change_journal.checkpoint_payload(),
-                task=raw,
-            )
-            if checkpoint is not None:
-                checkpoint_id = checkpoint.checkpoint_id
-
-        state.latest_diff = changeset.diff
-        state.add_task(
-            SessionTask(
-                task=raw,
-                status=str(result.get("status", "unknown")),
-                model=state.model,
-                sandbox_mode=state.sandbox_mode,
-                permission_mode=state.permission_mode,
-                summary=str(result.get("summary", "")),
-                files_modified=list(changeset.files),
-                verification_passed=changeset.verification_passed,
-                checkpoint_id=checkpoint_id,
-            )
+        _record_result(
+            state,
+            raw,
+            result,
+            engine,
         )
-        state.save()
-
-        print()
-        print(str(result.get("summary") or "Task finished."))
-        print(changeset.render_summary())
-        if checkpoint_id:
-            print(f"Checkpoint: {checkpoint_id}")
-        print()

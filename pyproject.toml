@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "locdex"
-version = "0.3.2a1"
+version = "0.3.3a1"
 description = "Local-first coding-agent runtime with repository intelligence, bounded context, native security, and optional cloud escalation."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -16,6 +16,7 @@ dependencies = [
   "huggingface-hub>=0.30",
   "platformdirs>=4.3",
   "PyYAML>=6.0",
+  "prompt-toolkit>=3.0",
 ]
 
 [project.optional-dependencies]

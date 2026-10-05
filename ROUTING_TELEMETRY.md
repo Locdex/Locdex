@@ -58,3 +58,34 @@ locdex telemetry enable       # BASIC
 locdex telemetry research     # separate RESEARCH consent
 locdex telemetry disable
 ```
+
+
+## v3.3 local-first escalation
+
+A coding task now has an execution wrapper around the AgentEngine. The local selected model attempts the task first. An `escalate`, `incomplete`, runtime-error, or failed-verification result may be reconsidered only when:
+
+1. the user explicitly configured a cloud provider/model;
+2. the active sandbox permits network access;
+3. the task was not cancelled.
+
+The cloud adapter is OpenAI-compatible and provider-neutral. It receives a bounded local-attempt handoff plus context compiled/retrieved by Locdex; it does not receive direct filesystem access.
+
+Inspect configuration without revealing the key:
+
+```bash
+locdex cloud status
+```
+
+## v3.3 outcome recording and offline training
+
+When telemetry is opted in, local and cloud attempts use the same allow-listed `routing_outcome` event. Cost/token/latency fields are populated when a provider exposes them. Telemetry failure must not become an agent failure.
+
+Exported sanitized JSON or JSONL can be transformed into a local lookup artifact:
+
+```bash
+locdex router train \
+  --input routing-events.jsonl \
+  --output router.json
+```
+
+The trainer groups outcomes by task class and model and emits success rate, average cost, latency, and attempts. This is an offline artifact-building step, not online learning on user machines.

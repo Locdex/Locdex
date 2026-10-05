@@ -7,6 +7,7 @@ from locdex.security import (
     PermissionMode,
     RiskClass,
     build_tool_preview,
+    format_permission_request,
 )
 
 
@@ -187,3 +188,28 @@ def test_plan_mode_blocks_structured_verification_execution(tmp_path):
     assert "Permission denied" in checks["compile"].output
     assert checks["tests"].status == "failed"
     assert "Permission denied" in checks["tests"].output
+
+
+def test_permission_request_describes_reason_and_access(tmp_path):
+    seen = []
+
+    def capture(request):
+        seen.append(request)
+        return ApprovalChoice.DENY
+
+    controller = PermissionController(
+        PermissionMode.ASK,
+        approval_callback=capture,
+    )
+    controller.authorize(
+        repo_path=str(tmp_path),
+        tool="run_tests",
+        risk=RiskClass.EXECUTE,
+        args={},
+    )
+
+    request = seen[0]
+    rendered = format_permission_request(request)
+    assert "Verify the current workspace changes." in rendered
+    assert "execute:local-process" in rendered
+    assert "Run the detected project test suite." in rendered

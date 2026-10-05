@@ -55,3 +55,20 @@ Before enabling a production telemetry endpoint:
 - evaluate calibration (`predicted_success` vs observed success) on held-out LocdexBench cases.
 
 A learned router may only replace `rules-v0` after it beats or matches the current router on held-out quality while meeting cost/privacy regressions defined for the release.
+
+
+## v3.3 automated coverage
+
+The automated gate now additionally covers:
+
+- Windows native-helper discovery/capability reporting and command wrapping;
+- permission prompt reason/access metadata;
+- dependency validation and downstream worktree inheritance;
+- CLI parsing for cloud status and offline router training;
+- versioned lookup-artifact training.
+
+The Windows helper has a dedicated Windows GitHub Actions build/probe workflow.
+
+## Deferred hands-on qualification
+
+Interactive feel, real local-model behavior, permission-prompt ergonomics under live generation, Windows helper execution on the target machine, and provider escalation with a real account are intentionally left for the later hands-on session. Do not treat automated unit coverage as evidence that those UX/model qualifications are complete.

@@ -1,4 +1,4 @@
-# Locdex v3.2 Build Specification
+# Locdex v3.3 Build Specification
 
 This document is normative for the public Locdex repository.
 
@@ -112,3 +112,17 @@ python scripts/preflight.py
 Preflight MUST compile source/tests, strictly import all package modules, collect/run tests, build the wheel, verify required wheel contents, install it into a temporary environment, and start packaged `locdex --help`.
 
 Only after the package gate is green should hardware/runtime, Qwen, Kimi, agent tools, Git, cloud providers, telemetry backend, LocdexBench, and OS/hardware matrix qualification begin.
+
+
+## v3.3 interaction, sandbox, orchestration, escalation
+
+- `locdex` MUST remain the primary persistent interactive interface; `locdex task` remains the headless primitive.
+- The interactive console MUST keep stdin ownership outside the agent worker so steering, cancellation, and approvals can coexist.
+- Sandbox capability reporting MUST distinguish process, filesystem, and network isolation. It MUST NOT market logical policy as native OS isolation.
+- The Windows native helper MAY strengthen isolation incrementally, but unsupported capability flags MUST remain false.
+- Multi-agent dependencies MUST fail closed: failed prerequisites block downstream execution and conflicting prerequisite changes MUST NOT be silently merged.
+- Locdex MUST NOT auto-commit or auto-merge multi-agent changes without explicit user intent.
+- Cloud fallback MUST be opt-in, provider-configured, network-policy-gated, and use the same Locdex tool/permission/sandbox/verification stack as local execution.
+- Escalation context SHOULD be minimal and evidence-driven; raw repository dumps are forbidden as a default handoff.
+- Telemetry collection MUST never be required for routing or task execution.
+- Router training in the public client MUST be offline and operate only on the allow-listed sanitized schema.

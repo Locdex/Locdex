@@ -170,3 +170,26 @@ def test_cli_steer_and_cancel():
     cancel = build_parser().parse_args(["cancel", "abc123"])
     assert cancel.command == "cancel"
     assert cancel.session_id == "abc123"
+
+
+def test_cli_cloud_status():
+    args = build_parser().parse_args(["cloud", "status"])
+    assert args.command == "cloud"
+    assert args.action == "status"
+
+
+def test_cli_router_train():
+    args = build_parser().parse_args(
+        [
+            "router",
+            "train",
+            "--input",
+            "events.jsonl",
+            "--output",
+            "router.json",
+        ]
+    )
+    assert args.command == "router"
+    assert args.action == "train"
+    assert args.input == "events.jsonl"
+    assert args.output == "router.json"

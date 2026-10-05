@@ -168,14 +168,14 @@ Or a specific session:
 locdex resume <session-id>
 ```
 
-While an agent task is running, another terminal can steer or cancel it between model turns:
+While an agent task is running, the same interactive terminal remains usable. Type ordinary text to steer the active run, use `/status` to inspect policy, or `/cancel` to cancel and roll back incomplete Locdex-owned changes. Permission prompts are multiplexed through the same console instead of competing for stdin.
+
+Cross-terminal steering remains available for automation or a second shell:
 
 ```bash
 locdex steer <session-id> "Do not touch migrations; keep the fix inside src/auth."
 locdex cancel <session-id>
 ```
-
-This uses a session-local steering inbox, so it does not compete with interactive permission prompts for the same stdin stream.
 
 Completed tasks that changed files create a local checkpoint. `/undo` restores only the files Locdex changed and refuses to overwrite files that have diverged since the checkpoint.
 
@@ -204,7 +204,9 @@ locdex sandbox status
 locdex sandbox modes
 ```
 
-On Linux, if `bubblewrap` is installed, Locdex runs development commands inside an OS filesystem sandbox and uses a separate network namespace when network access is disabled. On Windows, the current backend is explicitly reported as `logical`: workspace/tool policy, protected-path enforcement, command restrictions, secret-stripped environments, and network-defense environment variables are active, but Locdex does not claim AppContainer-level OS isolation yet.
+On Linux, if `bubblewrap` is installed, Locdex runs development commands inside an OS filesystem sandbox and uses a separate network namespace when network access is disabled.
+
+On Windows, Locdex now supports a native Rust helper. When installed, commands run with a restricted Windows token and Job Object process-tree containment. `locdex sandbox status` reports this as `windows-native`. Native filesystem ACL isolation and native network isolation are **not** claimed yet; workspace/network restrictions continue to be enforced by Locdex policy until those helper capabilities are implemented. Without the helper, Windows reports the `logical` backend.
 
 Choose a sandbox for one-shot tasks:
 
@@ -282,7 +284,7 @@ Qualification reports are stored in the Locdex user cache and contain outcome/ru
 
 ## User-defined multi-agent runs
 
-Locdex does not impose planner/coder/reviewer roles. You define each agent's name, task, model, step budget, routing mode, and write scope.
+Locdex does not impose planner/coder/reviewer roles. You define each agent's name, role, task, model, step budget, routing mode, write scope, priority, and dependencies.
 
 ```yaml
 version: 1
@@ -301,8 +303,12 @@ agents:
       - src/backend/**
 
   - name: frontend
+    role: client
     task: Update the frontend client for the new API.
     model: qwen25-3b
+    depends_on:
+      - backend
+    priority: 10
     write_scope:
       - src/frontend/**
 ```
@@ -314,7 +320,7 @@ locdex agents validate --config agents.yaml
 locdex agents run --config agents.yaml --repo . --parallel 2
 ```
 
-Each agent receives an isolated Git worktree and branch. Locdex does not auto-commit or auto-merge agent changes. Multi-agent runs currently require a clean base working tree. Parallelism defaults to 1 so local users do not accidentally load several large models into RAM.
+Each agent receives an isolated Git worktree and branch. Agents whose dependencies are complete inherit those dependency workspace changes without creating commits. Failed dependencies block downstream agents; conflicting prerequisite edits block the dependent agent; and final overlapping changed files are reported in an integration plan. Locdex still does not auto-commit or auto-merge final changes. Multi-agent runs require a clean base working tree. Parallelism defaults to 1 so local users do not accidentally load several large models into RAM.
 
 Each agent can set its own `permission_mode`. Interactive `ask` mode is supported for serial runs (`--parallel 1`). Parallel runs require non-interactive policies such as `plan`, `auto-edit`, `trusted`, or `unrestricted` so approval prompts cannot collide across worker threads.
 
@@ -439,3 +445,33 @@ python scripts/preflight.py
 ```
 
 The editable `.[dev]` install and `scripts/preflight.py` are contributor workflows used to run the test/lint/package gates before changes are merged.
+
+
+## Configured cloud fallback
+
+Cloud fallback is explicit and disabled unless the user configures it. Locdex uses an OpenAI-compatible chat-completions endpoint rather than hard-coding a provider.
+
+```bash
+export LOCDEX_CLOUD_ENABLED=1
+export LOCDEX_CLOUD_PROVIDER=my-provider
+export LOCDEX_CLOUD_MODEL=my-model
+export LOCDEX_CLOUD_BASE_URL=https://provider.example/v1
+export LOCDEX_CLOUD_API_KEY=...
+locdex cloud status
+```
+
+Use `workspace-network` when cloud escalation is allowed:
+
+```bash
+locdex task --sandbox workspace-network --task "Fix the failing parser."
+```
+
+The local attempt remains first. If it cannot complete, Locdex rolls back incomplete Locdex-owned edits, builds a bounded handoff containing failure/verification metadata rather than the whole repository, and retries through the configured cloud session. Exact source is still retrieved through Locdex tools.
+
+Router training is offline:
+
+```bash
+locdex router train --input routing-events.jsonl --output router.json
+```
+
+The trainer consumes the sanitized routing-event schema and produces the same versioned lookup artifact used by the local router. Shared telemetry remains opt-in and does not perform online training.

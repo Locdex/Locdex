@@ -1,4 +1,4 @@
-# Locdex Architecture v3.2
+# Locdex Architecture v3.3
 
 Locdex is a local-first coding-agent runtime. The model is replaceable infrastructure; Locdex owns repository intelligence, context construction, security, routing, tools, verification, telemetry, and hardware policy.
 
@@ -137,3 +137,59 @@ Native security remains public and available to every user:
 Enterprise implementation code is not in this repository. The OSS repo contains only extension contracts under `src/locdex/extensions/`. A private `locdex-enterprise` package may add SSO/RBAC, hardened sandboxes, central policy, audit/SIEM integrations, enterprise secret brokers, egress controls, approved-model policy, internal inference, and air-gap support.
 
 The private package depends on public Locdex; public Locdex never depends on the private package.
+
+
+## v3.3 execution architecture
+
+### Interactive console
+
+`locdex` is the primary human interface. The active agent executes on a worker thread while the terminal event loop owns stdin. The console multiplexes three inputs without a second terminal:
+
+- user steering text;
+- `/cancel` and `/status`;
+- permission decisions.
+
+The persistent steering queue remains the transport boundary, so future TUI/IDE clients can submit the same events.
+
+### Windows native sandbox
+
+The Windows backend has a native Rust helper contract:
+
+```text
+Python SandboxPolicy
+      ↓
+locdex-windows-sandbox.exe
+      ├─ restricted access token
+      ├─ Job Object
+      └─ kill-on-close process containment
+```
+
+Capability reporting is strict. Process isolation is reported independently from filesystem and network isolation. The current helper does not claim native filesystem ACL or network isolation; those restrictions remain enforced by Locdex policy until a stronger helper revision ships.
+
+### Dependency-aware multi-agent supervisor
+
+Agent specs may declare `depends_on`, `priority`, and `role`. Ready agents may run in parallel. Successful prerequisite workspace changes are inherited into downstream worktrees without commits. Failed prerequisites block dependents. Conflicting prerequisite edits block execution, and final overlapping files are surfaced in an integration plan. Locdex does not auto-commit or auto-merge.
+
+### Local-first cloud escalation
+
+The execution path is:
+
+```text
+task
+ ↓
+local AgentEngine
+ ↓ failure / escalation / failed verification
+rollback incomplete Locdex edits
+ ↓
+bounded failure/evidence handoff
+ ↓
+user-configured OpenAI-compatible provider
+ ↓
+same tool / permission / sandbox / verifier stack
+```
+
+Cloud fallback requires explicit configuration and a network-enabled sandbox. Locdex does not hard-code a default provider.
+
+### Telemetry → offline router artifact
+
+When shared telemetry is opted in, completed local/cloud attempts emit only the existing allow-listed routing outcome schema. The public client can convert exported sanitized events into a versioned lookup artifact with `locdex router train`. Training remains offline; no client performs online model/router training.

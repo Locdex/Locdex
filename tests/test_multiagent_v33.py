@@ -106,43 +106,28 @@ def test_supervisor_uses_isolated_worktrees_and_user_scopes(tmp_path, monkeypatc
 
     calls: list[dict] = []
 
-    class FakeEngine:
-        def __init__(self, model_key=None):
-            self.model_key = model_key
-
-        def execute(
-            self,
-            task,
-            repo_path,
-            *,
-            max_steps,
-            routing_mode,
-            write_scope,
-            progress,
-            permission_controller,
-            sandbox_mode,
-        ):
-            calls.append(
-                {
-                    "model": self.model_key,
-                    "task": task,
-                    "repo": repo_path,
-                    "max_steps": max_steps,
-                    "mode": routing_mode,
-                    "write_scope": write_scope,
-                    "permission_mode": permission_controller.mode.value,
-                    "sandbox_mode": sandbox_mode,
-                }
-            )
-            return {
-                "status": "completed",
-                "model": self.model_key,
-                "summary": "done",
-                "steps": 1,
-                "files_modified": [],
+    def fake_execute(engine, task, repo_path, **kwargs):
+        calls.append(
+            {
+                "model": engine.model_key,
+                "task": task,
+                "repo": repo_path,
+                "max_steps": kwargs["max_steps"],
+                "mode": kwargs["routing_mode"],
+                "write_scope": kwargs["write_scope"],
+                "permission_mode": kwargs["permission_controller"].mode.value,
+                "sandbox_mode": kwargs["sandbox_mode"],
             }
+        )
+        return {
+            "status": "completed",
+            "model": engine.model_key,
+            "summary": "done",
+            "steps": 1,
+            "files_modified": [],
+        }
 
-    monkeypatch.setattr(supervisor, "AgentEngine", FakeEngine)
+    monkeypatch.setattr(supervisor, "execute_with_escalation", fake_execute)
 
     spec = parse_agent_spec(
         {
@@ -250,16 +235,12 @@ def test_serial_ask_mode_accepts_approval_callback(tmp_path, monkeypatch):
 
     seen = {}
 
-    class FakeEngine:
-        def __init__(self, model_key=None):
-            self.model_key = model_key
+    def fake_execute(engine, task, repo_path, **kwargs):
+        seen["mode"] = kwargs["permission_controller"].mode.value
+        seen["callback"] = kwargs["permission_controller"].approval_callback
+        return {"status": "completed", "steps": 1, "files_modified": []}
 
-        def execute(self, task, repo_path, **kwargs):
-            seen["mode"] = kwargs["permission_controller"].mode.value
-            seen["callback"] = kwargs["permission_controller"].approval_callback
-            return {"status": "completed", "steps": 1, "files_modified": []}
-
-    monkeypatch.setattr(supervisor, "AgentEngine", FakeEngine)
+    monkeypatch.setattr(supervisor, "execute_with_escalation", fake_execute)
     callback = lambda request: None
     spec = parse_agent_spec(
         {
@@ -279,3 +260,127 @@ def test_serial_ask_mode_accepts_approval_callback(tmp_path, monkeypatch):
     assert result["agents_completed"] == 1
     assert seen["mode"] == "ask"
     assert seen["callback"] is callback
+
+
+def test_agent_dependencies_are_validated():
+    spec = parse_agent_spec(
+        {
+            "agents": [
+                {
+                    "name": "backend",
+                    "task": "Implement backend.",
+                    "model": "smoke",
+                    "permission_mode": "auto-edit",
+                },
+                {
+                    "name": "tests",
+                    "task": "Verify backend.",
+                    "model": "smoke",
+                    "permission_mode": "auto-edit",
+                    "depends_on": ["backend"],
+                    "priority": 10,
+                    "role": "verifier",
+                },
+            ]
+        }
+    )
+    assert spec.agents[1].depends_on == ("backend",)
+    assert spec.agents[1].role == "verifier"
+    assert spec.agents[1].priority == 10
+
+    with pytest.raises(AgentSpecError, match="unknown agents"):
+        parse_agent_spec(
+            {
+                "agents": [
+                    {
+                        "name": "tests",
+                        "task": "Verify.",
+                        "model": "smoke",
+                        "depends_on": ["missing"],
+                    }
+                ]
+            }
+        )
+
+    with pytest.raises(AgentSpecError, match="cycle"):
+        parse_agent_spec(
+            {
+                "agents": [
+                    {
+                        "name": "a",
+                        "task": "A",
+                        "model": "smoke",
+                        "depends_on": ["b"],
+                    },
+                    {
+                        "name": "b",
+                        "task": "B",
+                        "model": "smoke",
+                        "depends_on": ["a"],
+                    },
+                ]
+            }
+        )
+
+
+def test_dependency_changes_are_inherited_without_commits(tmp_path, monkeypatch):
+    repo = _clean_repo(tmp_path)
+    cache = tmp_path / "cache"
+    monkeypatch.setattr(
+        worktrees,
+        "user_cache_dir",
+        lambda *args, **kwargs: str(cache),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "model_status",
+        lambda key: {"installed": True, "model": key},
+    )
+
+    observed = {}
+
+    def fake_execute(engine, task, repo_path, **kwargs):
+        path = Path(repo_path) / "app.py"
+        if task == "Change backend.":
+            path.write_text("VALUE = 2\n", encoding="utf-8")
+        else:
+            observed["downstream_source"] = path.read_text(encoding="utf-8")
+        return {
+            "status": "completed",
+            "model": engine.model_key,
+            "summary": task,
+            "steps": 1,
+            "files_modified": ["app.py"] if task == "Change backend." else [],
+        }
+
+    monkeypatch.setattr(
+        supervisor,
+        "execute_with_escalation",
+        fake_execute,
+    )
+    spec = parse_agent_spec(
+        {
+            "agents": [
+                {
+                    "name": "backend",
+                    "task": "Change backend.",
+                    "model": "smoke",
+                    "permission_mode": "auto-edit",
+                },
+                {
+                    "name": "verify",
+                    "task": "Inspect backend.",
+                    "model": "smoke",
+                    "permission_mode": "auto-edit",
+                    "depends_on": ["backend"],
+                },
+            ]
+        }
+    )
+
+    result = supervisor.run_agents(spec, str(repo), parallel=1)
+
+    assert result["agents_completed"] == 2
+    assert observed["downstream_source"] == "VALUE = 2\n"
+    assert result["auto_commit"] is False
+    assert result["auto_merge"] is False

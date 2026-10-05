@@ -19,6 +19,8 @@ from ..models import (
     selected_model_key,
 )
 from ..qualification import qualify_model
+from ..providers.openai_compatible import CloudConfig
+from ..routing.execution import execute_with_escalation
 from ..sandbox import SandboxMode, detect_sandbox_capabilities, profile_for_mode
 from ..session import PersistentSteeringQueue, SessionState
 from ..security import (
@@ -26,9 +28,11 @@ from ..security import (
     PermissionController,
     PermissionMode,
     PermissionRequest,
+    format_permission_request,
 )
 from ..routing import LearnedRouter, RoutingPolicy, RoutingSession, local_candidates, profile_task
 from ..routing.updater import status as router_status, update_from_manifest
+from ..routing.training.train import train_lookup_file
 from ..runtime import (
     RuntimeExecutionError,
     detect_hardware,
@@ -101,6 +105,9 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_list = mcp_sub.add_parser("list", help="List MCP servers configured in .locdex/mcp.json.")
     mcp_list.add_argument("--repo", default=".")
 
+    cloud_cmd = sub.add_parser("cloud", help="Inspect user-configured cloud fallback.")
+    cloud_cmd.add_argument("action", choices=["status"])
+
     sandbox_cmd = sub.add_parser("sandbox", help="Inspect Locdex sandbox capabilities and modes.")
     sandbox_sub = sandbox_cmd.add_subparsers(dest="sandbox_action", required=True)
     sandbox_sub.add_parser("status", help="Show sandbox backend/isolation capabilities.")
@@ -168,8 +175,11 @@ def build_parser() -> argparse.ArgumentParser:
     telemetry.add_argument("value", nargs="?")
 
     router = sub.add_parser("router")
-    router.add_argument("action", choices=["status", "update"])
+    router.add_argument("action", choices=["status", "update", "train"])
     router.add_argument("--manifest-url")
+    router.add_argument("--input")
+    router.add_argument("--output")
+    router.add_argument("--version")
     return parser
 
 
@@ -205,9 +215,7 @@ def _print_model_rows() -> None:
 def _interactive_permission(request: PermissionRequest) -> ApprovalChoice:
     print()
     print("=" * 72)
-    print(f"Permission required: {request.risk.value} | {request.tool}")
-    print("-" * 72)
-    print(request.preview)
+    print(format_permission_request(request))
     print("-" * 72)
     print("[y] allow once   [a] allow similar actions this session   [n] deny")
 
@@ -232,7 +240,7 @@ def _permission_controller(
     *,
     interactive: bool,
 ) -> PermissionController:
-    callback = _interactive_permission if interactive and mode == PermissionMode.ASK.value else None
+    callback = _interactive_permission if interactive else None
     return PermissionController(mode, approval_callback=callback)
 
 
@@ -327,6 +335,10 @@ def cli(argv: list[str] | None = None) -> int:
         )
         return 0
 
+    if args.command == "cloud":
+        _print_json(CloudConfig.from_env().public_dict())
+        return 0
+
     if args.command == "sandbox":
         if args.sandbox_action == "status":
             caps = detect_sandbox_capabilities()
@@ -401,7 +413,8 @@ def cli(argv: list[str] | None = None) -> int:
         )
         engine = AgentEngine(model_key=args.model)
         try:
-            result = engine.execute(
+            result = execute_with_escalation(
+                engine,
                 args.task,
                 args.repo,
                 max_steps=args.max_steps,
@@ -478,6 +491,11 @@ def cli(argv: list[str] | None = None) -> int:
                             f"model={row['model']} | branch={workspace['branch']}"
                         )
                         print(f"  workspace: {workspace['path']}")
+                    conflicts = result.get("integration_conflicts") or {}
+                    if conflicts:
+                        print("Integration conflicts:")
+                        for path, names in conflicts.items():
+                            print(f"  {path}: {', '.join(names)}")
                     print("No agent changes were auto-committed or auto-merged.")
                 return 0 if result["agents_completed"] == result["agents_total"] else 1
         except (AgentSpecError, MultiAgentError, WorktreeError, ValueError) as exc:
@@ -523,6 +541,22 @@ def cli(argv: list[str] | None = None) -> int:
             return 0
         if args.action == "update":
             _print_json(update_from_manifest(args.manifest_url))
+            return 0
+        if args.action == "train":
+            if not args.input or not args.output:
+                print("Locdex router error: train requires --input and --output.")
+                return 1
+            try:
+                _print_json(
+                    train_lookup_file(
+                        args.input,
+                        args.output,
+                        version=args.version,
+                    )
+                )
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                print(f"Locdex router error: {exc}")
+                return 1
             return 0
 
     if args.command == "telemetry":

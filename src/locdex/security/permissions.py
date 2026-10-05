@@ -6,7 +6,7 @@ import shlex
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Any
+from typing import Any, Callable
 
 from .policy import RiskClass
 
@@ -32,6 +32,8 @@ class PermissionRequest:
     args: dict[str, Any]
     preview: str
     cache_key: str
+    purpose: str = ""
+    access: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -85,7 +87,10 @@ def _symbol_source(path: Path, name: str) -> str | None:
         return None
     lines = source.splitlines()
     for node in tree.body:
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        if not isinstance(
+            node,
+            (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
+        ):
             continue
         if getattr(node, "name", None) != name:
             continue
@@ -94,7 +99,10 @@ def _symbol_source(path: Path, name: str) -> str | None:
         if decorators:
             start = min(
                 start,
-                *(int(getattr(item, "lineno", start) or start) for item in decorators),
+                *(
+                    int(getattr(item, "lineno", start) or start)
+                    for item in decorators
+                ),
             )
         end = int(getattr(node, "end_lineno", start) or start)
         return "\n".join(lines[start - 1 : end])
@@ -137,21 +145,30 @@ def build_tool_preview(
         target = _safe_workspace_path(repo_path, path_text)
         symbol = str(args.get("name", ""))
         after = str(args.get("new_source", ""))
-        before = _symbol_source(target, symbol) if target is not None and target.is_file() else None
+        before = (
+            _symbol_source(target, symbol)
+            if target is not None and target.is_file()
+            else None
+        )
         if before is not None:
             return _bounded_diff(
                 before + "\n",
                 after.strip("\n") + "\n",
                 path=f"{path_text}::{symbol}",
             )
-        return f"Replace Python symbol {symbol!r} in {path_text} with:\n{after[:4000]}"
+        return (
+            f"Replace Python symbol {symbol!r} in {path_text} with:\n"
+            f"{after[:4000]}"
+        )
 
     if tool == "insert_after_symbol" and path_text:
         anchor = str(args.get("anchor", ""))
         new_source = str(args.get("new_source", ""))
         return (
             f"Insert after Python symbol {anchor!r} in {path_text}:\n"
-            + "\n".join(f"+ {line}" for line in new_source.splitlines())[:4000]
+            + "\n".join(
+                f"+ {line}" for line in new_source.splitlines()
+            )[:4000]
         )
 
     if tool == "delete_path" and path_text:
@@ -160,7 +177,9 @@ def build_tool_preview(
     if tool == "run_command":
         argv = args.get("argv") or []
         if isinstance(argv, list):
-            return "Run command:\n  " + shlex.join(str(item) for item in argv)
+            return "Run command:\n  " + shlex.join(
+                str(item) for item in argv
+            )
         return "Run a workspace command."
 
     if tool == "run_tests":
@@ -172,7 +191,10 @@ def build_tool_preview(
             for key, value in args.items()
             if value not in (None, "", [], {})
         )
-        return f"Git action: {tool}" + (f"\n{details}" if details else "")
+        return (
+            f"Git action: {tool}"
+            + (f"\n{details}" if details else "")
+        )
 
     return f"Tool: {tool}\nArguments: {args}"
 
@@ -188,13 +210,92 @@ def permission_cache_key(
         return "tool:run_tests"
     if tool == "run_command":
         argv = args.get("argv") or []
-        executable = str(argv[0]).lower() if isinstance(argv, list) and argv else ""
+        executable = (
+            str(argv[0]).lower()
+            if isinstance(argv, list) and argv
+            else ""
+        )
         return f"run_command:{executable}"
     if risk is RiskClass.GIT_WRITE:
         return f"tool:{tool}"
     if risk is RiskClass.NETWORK:
         return f"tool:{tool}"
     return f"tool:{tool}"
+
+
+def _request_purpose(
+    tool: str,
+    risk: RiskClass,
+    args: dict[str, Any],
+) -> str:
+    explicit = str(args.get("reason", "")).strip()
+    if explicit:
+        return explicit[:240]
+
+    if tool == "run_tests":
+        return "Verify the current workspace changes."
+    if tool == "run_command":
+        argv = args.get("argv") or []
+        command = (
+            str(argv[0])
+            if isinstance(argv, list) and argv
+            else "command"
+        )
+        return f"Run {command} inside the workspace."
+    if tool == "git_commit":
+        return "Create the Git commit explicitly requested by the user."
+    if tool in {"git_pull", "git_push"}:
+        return "Perform the requested remote Git operation."
+    if risk is RiskClass.WRITE:
+        path = str(args.get("path", "")).strip()
+        return (
+            f"Modify {path}."
+            if path
+            else "Modify files in the workspace."
+        )
+    if risk is RiskClass.NETWORK:
+        return "Use a network-backed tool requested by the active task."
+    if risk is RiskClass.GIT_WRITE:
+        return "Mutate Git state for the active task."
+    return f"Use {tool} for the active task."
+
+
+def _request_access(
+    tool: str,
+    risk: RiskClass,
+    args: dict[str, Any],
+) -> tuple[str, ...]:
+    access: list[str] = ["workspace"]
+    path = str(args.get("path", "")).replace("\\", "/").strip()
+
+    if risk is RiskClass.WRITE:
+        access.append(
+            f"write:{path}" if path else "write:workspace"
+        )
+    if risk is RiskClass.EXECUTE:
+        access.append("execute:local-process")
+    if risk is RiskClass.GIT_WRITE:
+        access.append("git:mutate")
+    if risk is RiskClass.NETWORK:
+        access.append("network")
+    if tool in {"git_pull", "git_push"}:
+        access.append("remote-git")
+
+    return tuple(dict.fromkeys(access))
+
+
+def format_permission_request(request: PermissionRequest) -> str:
+    rows = [
+        f"Locdex wants to use: {request.tool}",
+        f"Risk: {request.risk.value}",
+    ]
+    if request.purpose:
+        rows.extend(["", "Reason:", f"  {request.purpose}"])
+    if request.access:
+        rows.extend(["", "Access:"])
+        rows.extend(f"  • {item}" for item in request.access)
+    rows.extend(["", "Preview:", request.preview])
+    return "\n".join(rows)
 
 
 class PermissionController:
@@ -224,7 +325,11 @@ class PermissionController:
             return "ask"
 
         if self.mode is PermissionMode.TRUSTED:
-            if risk in {RiskClass.READ, RiskClass.WRITE, RiskClass.EXECUTE}:
+            if risk in {
+                RiskClass.READ,
+                RiskClass.WRITE,
+                RiskClass.EXECUTE,
+            }:
                 return "allow"
             return "ask"
 
@@ -243,9 +348,15 @@ class PermissionController:
     ) -> PermissionDecision:
         action = self._base_action(risk)
         if action == "allow":
-            return PermissionDecision(True, f"Allowed by {self.mode.value} permission mode.")
+            return PermissionDecision(
+                True,
+                f"Allowed by {self.mode.value} permission mode.",
+            )
         if action == "deny":
-            return PermissionDecision(False, f"Denied by {self.mode.value} permission mode.")
+            return PermissionDecision(
+                False,
+                f"Denied by {self.mode.value} permission mode.",
+            )
 
         key = permission_cache_key(tool, risk, args)
         if key in self._session_allow:
@@ -261,18 +372,29 @@ class PermissionController:
             args=dict(args),
             preview=build_tool_preview(repo_path, tool, args),
             cache_key=key,
+            purpose=_request_purpose(tool, risk, args),
+            access=_request_access(tool, risk, args),
         )
 
         if self.approval_callback is None:
             return PermissionDecision(
                 False,
-                "Permission requires interactive approval, but no approval callback is available.",
+                "Permission requires interactive approval, "
+                "but no approval callback is available.",
             )
 
         choice = self.approval_callback(request)
         if choice is ApprovalChoice.ALLOW_SESSION:
             self._session_allow.add(key)
-            return PermissionDecision(True, "Allowed for this session.", choice)
+            return PermissionDecision(
+                True,
+                "Allowed for this session.",
+                choice,
+            )
         if choice is ApprovalChoice.ALLOW_ONCE:
             return PermissionDecision(True, "Allowed once.", choice)
-        return PermissionDecision(False, "Denied by user.", ApprovalChoice.DENY)
+        return PermissionDecision(
+            False,
+            "Denied by user.",
+            ApprovalChoice.DENY,
+        )
