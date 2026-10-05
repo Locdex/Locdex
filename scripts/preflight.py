@@ -135,10 +135,15 @@ def main() -> int:
 
         with tempfile.TemporaryDirectory(prefix="venv-", dir=PREFLIGHT_TMP) as vd:
             env = Path(vd) / "venv"
-            venv.EnvBuilder(with_pip=True, system_site_packages=True).create(env)
+            # This environment must be isolated from the developer/CI environment.
+            # Otherwise an undeclared or uninstalled runtime dependency can leak in
+            # through system site-packages and make the packaged CLI check pass.
+            venv.EnvBuilder(with_pip=True, system_site_packages=False).create(env)
             py = env / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
             exe = env / ("Scripts/locdex.exe" if sys.platform == "win32" else "bin/locdex")
-            run([str(py), "-m", "pip", "install", "--force-reinstall", "--no-deps", str(wheel)])
+            # Install the wheel exactly as an end user would so declared runtime
+            # dependencies (for example prompt-toolkit) are resolved and verified.
+            run([str(py), "-m", "pip", "install", "--force-reinstall", str(wheel)])
             run([str(exe), "--help"])
 
     print("ALL PREFLIGHT CHECKS PASSED")
