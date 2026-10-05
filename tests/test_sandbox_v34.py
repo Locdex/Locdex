@@ -8,6 +8,7 @@ from locdex.sandbox import (
 )
 from locdex.sandbox import runner
 from locdex.security import RiskClass
+from locdex.tools import executor
 
 
 def test_read_only_sandbox_denies_mutation_and_execution():
@@ -115,3 +116,40 @@ def test_windows_capability_is_reported_as_logical(monkeypatch):
     assert caps.backend == "logical"
     assert caps.os_isolation is False
     assert "AppContainer" in caps.reason
+
+
+def test_dedicated_git_uses_sandbox_wrapper(tmp_path, monkeypatch):
+    seen = {}
+
+    def fake_wrap(repo_path, cwd, argv, mode):
+        seen["repo"] = repo_path
+        seen["cwd"] = cwd
+        seen["argv"] = list(argv)
+        seen["mode"] = mode
+        return ["sandbox", *argv], "test-backend"
+
+    class Result:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
+    def fake_run(argv, **kwargs):
+        seen["executed"] = list(argv)
+        seen["env"] = dict(kwargs["env"])
+        return Result()
+
+    monkeypatch.setattr(executor, "wrap_command", fake_wrap)
+    monkeypatch.setattr(executor.subprocess, "run", fake_run)
+
+    result = executor._git(
+        str(tmp_path),
+        "status",
+        "--short",
+        sandbox_mode="workspace-write",
+    )
+
+    assert result.returncode == 0
+    assert seen["argv"] == ["git", "status", "--short"]
+    assert seen["executed"] == ["sandbox", "git", "status", "--short"]
+    assert seen["mode"] == "workspace-write"
+    assert seen["env"]["LOCDEX_SANDBOX_MODE"] == "workspace-write"
