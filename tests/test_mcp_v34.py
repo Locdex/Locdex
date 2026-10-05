@@ -5,7 +5,8 @@ import json
 import pytest
 
 from locdex.extensions.mcp import MCPConfigError, load_mcp_servers
-from locdex.session import SteeringQueue
+from locdex.session import PersistentSteeringQueue, SteeringQueue
+from locdex.session import steering as steering_module
 
 
 def test_mcp_config_loads_stdio_servers(tmp_path):
@@ -59,3 +60,23 @@ def test_steering_queue_drains_and_cancels():
 
     queue.cancel()
     assert queue.cancelled is True
+
+
+def test_persistent_steering_queue_cross_process_contract(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        steering_module,
+        "user_cache_dir",
+        lambda *args, **kwargs: str(tmp_path / "cache"),
+    )
+
+    first = PersistentSteeringQueue("session")
+    second = PersistentSteeringQueue("session")
+
+    first.submit("Do not touch auth.py.")
+    assert second.drain() == ["Do not touch auth.py."]
+    assert first.drain() == []
+
+    second.cancel()
+    assert first.cancelled is True
+    first.reset_cancel()
+    assert second.cancelled is False
