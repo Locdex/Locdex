@@ -1,3 +1,11 @@
+from .mcp import (
+    MCPConfigError,
+    MCPServerConfig,
+    MCPUnavailableError,
+    call_mcp_tool,
+    list_mcp_tools,
+    load_mcp_servers,
+)
 from .enterprise import (
     AuditEvent,
     CloudAuthorizationRequest,
@@ -15,6 +23,9 @@ from .enterprise import (
 
 __all__ = [
     "AuditEvent",
+    "MCPConfigError",
+    "MCPServerConfig",
+    "MCPUnavailableError",
     "CloudAuthorizationRequest",
     "Decision",
     "EnterpriseExtension",
@@ -26,4 +37,7 @@ __all__ = [
     "SecretRequest",
     "SecretResponse",
     "ToolAuthorizationRequest",
+    "call_mcp_tool",
+    "list_mcp_tools",
+    "load_mcp_servers",
 ]
