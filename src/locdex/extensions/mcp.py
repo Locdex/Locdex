@@ -30,7 +30,7 @@ class MCPServerConfig:
             "name": self.name,
             "command": self.command,
             "args": list(self.args),
-            "env": dict(self.env or {}),
+            "env_keys": sorted((self.env or {}).keys()),
         }
 
 
