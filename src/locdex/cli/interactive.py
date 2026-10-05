@@ -18,6 +18,7 @@ from ..security import (
     PermissionController,
     PermissionMode,
     PermissionRequest,
+    format_permission_details,
     format_permission_request,
 )
 from ..session import (
@@ -48,24 +49,23 @@ def interactive_permission(
     request: PermissionRequest,
 ) -> ApprovalChoice:
     print()
-    print("=" * 72)
     print(format_permission_request(request))
-    print("-" * 72)
-    print(
-        "[y] allow once   "
-        "[a] allow similar actions this session   "
-        "[n] deny"
-    )
+    print("[y] once  [a] similar this session  [d] details  [N] deny")
     while True:
         try:
-            raw = input("Choice [y/a/N]: ")
+            raw = input("Choice [y/a/d/N]: ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             print()
             return ApprovalChoice.DENY
+        if raw in {"d", "details", "show"}:
+            print()
+            print(format_permission_details(request))
+            print()
+            continue
         parsed = _parse_approval(raw)
         if parsed is not None:
             return parsed
-        print("Enter y, a, or n.")
+        print("Enter y, a, d, or n.")
 
 
 class _ApprovalBroker:
@@ -312,26 +312,30 @@ async def _active_task(
                     pass
                 request, response = approval_task.result()
                 print()
-                print("=" * 72)
                 print(format_permission_request(request))
-                print("-" * 72)
                 print(
-                    "[y] allow once   "
-                    "[a] allow similar actions this session   "
-                    "[n] deny"
+                    "[y] once  [a] similar this session  "
+                    "[d] details  [N] deny"
                 )
                 while True:
                     try:
-                        raw_choice = await prompt.prompt_async(
-                            "Choice [y/a/N]: "
-                        )
+                        raw_choice = (
+                            await prompt.prompt_async(
+                                "Choice [y/a/d/N]: "
+                            )
+                        ).strip().lower()
                     except (EOFError, KeyboardInterrupt):
                         raw_choice = "n"
+                    if raw_choice in {"d", "details", "show"}:
+                        print()
+                        print(format_permission_details(request))
+                        print()
+                        continue
                     choice = _parse_approval(raw_choice)
                     if choice is not None:
                         broker.resolve(response, choice)
                         break
-                    print("Enter y, a, or n.")
+                    print("Enter y, a, d, or n.")
                 continue
 
             if input_task in done:
