@@ -28,6 +28,16 @@ TOOLS = {
     "delete_path": ToolDefinition("delete_path", RiskClass.WRITE, "Delete a file or empty directory."),
     "run_command": ToolDefinition("run_command", RiskClass.EXECUTE, "Run a bounded argv development command."),
     "run_tests": ToolDefinition("run_tests", RiskClass.EXECUTE, "Run the detected project test suite."),
+    "mcp_list_tools": ToolDefinition(
+        "mcp_list_tools",
+        RiskClass.NETWORK,
+        "List tools exposed by a user-configured MCP server.",
+    ),
+    "mcp_call": ToolDefinition(
+        "mcp_call",
+        RiskClass.NETWORK,
+        "Call one tool on a user-configured MCP server.",
+    ),
     "git_status": ToolDefinition("git_status", RiskClass.READ, "Read Git working-tree status."),
     "git_diff": ToolDefinition("git_diff", RiskClass.READ, "Read Git diff."),
     "git_add": ToolDefinition("git_add", RiskClass.GIT_WRITE, "Stage explicitly requested changes."),
