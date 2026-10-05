@@ -634,6 +634,38 @@ def execute_tool(
         )
     if name == "run_tests":
         return run_tests(repo_path, sandbox_mode=sandbox_mode)
+    if name == "mcp_list_tools":
+        server = str(args.get("server", "")).strip()
+        if not server:
+            raise ToolError("mcp_list_tools requires server")
+        from ..extensions.mcp import MCPConfigError, MCPUnavailableError, list_mcp_tools
+        try:
+            return list_mcp_tools(
+                repo_path,
+                server,
+                sandbox_mode=sandbox_mode or "workspace-network",
+            )
+        except (MCPConfigError, MCPUnavailableError) as exc:
+            raise ToolError(str(exc)) from exc
+    if name == "mcp_call":
+        server = str(args.get("server", "")).strip()
+        tool = str(args.get("tool", "")).strip()
+        arguments = args.get("arguments") or {}
+        if not server or not tool:
+            raise ToolError("mcp_call requires server and tool")
+        if not isinstance(arguments, dict):
+            raise ToolError("mcp_call arguments must be an object")
+        from ..extensions.mcp import MCPConfigError, MCPUnavailableError, call_mcp_tool
+        try:
+            return call_mcp_tool(
+                repo_path,
+                server,
+                tool,
+                arguments,
+                sandbox_mode=sandbox_mode or "workspace-network",
+            )
+        except (MCPConfigError, MCPUnavailableError) as exc:
+            raise ToolError(str(exc)) from exc
     if name == "git_status":
         return git_status(repo_path)
     if name == "git_diff":
