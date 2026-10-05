@@ -91,6 +91,7 @@ def main() -> int:
             "locdex/session/changeset.py",
             "locdex/session/checkpoints.py",
             "locdex/session/state.py",
+            "locdex/session/steering.py",
             "locdex/intelligence/graph.py",
             "locdex/intelligence/planner.py",
             "locdex/intelligence/source.py",
@@ -123,6 +124,7 @@ def main() -> int:
             "locdex/tools/python_symbols.py",
             "locdex/verification/engine.py",
             "locdex/extensions/enterprise.py",
+            "locdex/extensions/mcp.py",
         }
         missing = required - names
         if missing:
