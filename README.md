@@ -168,6 +168,15 @@ Or a specific session:
 locdex resume <session-id>
 ```
 
+While an agent task is running, another terminal can steer or cancel it between model turns:
+
+```bash
+locdex steer <session-id> "Do not touch migrations; keep the fix inside src/auth."
+locdex cancel <session-id>
+```
+
+This uses a session-local steering inbox, so it does not compete with interactive permission prompts for the same stdin stream.
+
 Completed tasks that changed files create a local checkpoint. `/undo` restores only the files Locdex changed and refuses to overwrite files that have diverged since the checkpoint.
 
 ## Sandboxing
