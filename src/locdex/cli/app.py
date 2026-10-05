@@ -28,6 +28,7 @@ from ..security import (
     PermissionController,
     PermissionMode,
     PermissionRequest,
+    format_permission_details,
     format_permission_request,
 )
 from ..routing import LearnedRouter, RoutingPolicy, RoutingSession, local_candidates, profile_task
@@ -214,25 +215,28 @@ def _print_model_rows() -> None:
 
 def _interactive_permission(request: PermissionRequest) -> ApprovalChoice:
     print()
-    print("=" * 72)
     print(format_permission_request(request))
-    print("-" * 72)
-    print("[y] allow once   [a] allow similar actions this session   [n] deny")
+    print("[y] once  [a] similar this session  [d] details  [N] deny")
 
     while True:
         try:
-            choice = input("Choice [y/a/N]: ").strip().lower()
+            choice = input("Choice [y/a/d/N]: ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             print()
             return ApprovalChoice.DENY
 
+        if choice in {"d", "details", "show"}:
+            print()
+            print(format_permission_details(request))
+            print()
+            continue
         if choice in {"y", "yes"}:
             return ApprovalChoice.ALLOW_ONCE
         if choice in {"a", "always", "session"}:
             return ApprovalChoice.ALLOW_SESSION
         if choice in {"", "n", "no", "deny"}:
             return ApprovalChoice.DENY
-        print("Enter y, a, or n.")
+        print("Enter y, a, d, or n.")
 
 
 def _permission_controller(
