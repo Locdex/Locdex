@@ -20,7 +20,7 @@ from ..models import (
 )
 from ..qualification import qualify_model
 from ..sandbox import SandboxMode, detect_sandbox_capabilities, profile_for_mode
-from ..session import PersistentSteeringQueue, SessionState, list_sessions
+from ..session import PersistentSteeringQueue, SessionState
 from ..security import (
     ApprovalChoice,
     PermissionController,
