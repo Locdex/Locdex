@@ -6,6 +6,7 @@ import json
 from .. import __version__
 from .interactive import run_interactive
 from ..agent import AgentEngine
+from ..extensions import MCPConfigError, load_mcp_servers
 from ..multiagent import AgentSpecError, MultiAgentError, WorktreeError, load_agent_spec, run_agents
 from ..models import (
     MODEL_PROFILES,
@@ -88,6 +89,11 @@ def build_parser() -> argparse.ArgumentParser:
     route.add_argument("--task", required=True)
     route.add_argument("--repo", default=".")
     route.add_argument("--mode", choices=["local_only", "balanced", "fast", "quality"], default="balanced")
+
+    mcp_cmd = sub.add_parser("mcp", help="Inspect user-configured MCP servers.")
+    mcp_sub = mcp_cmd.add_subparsers(dest="mcp_action", required=True)
+    mcp_list = mcp_sub.add_parser("list", help="List MCP servers configured in .locdex/mcp.json.")
+    mcp_list.add_argument("--repo", default=".")
 
     sandbox_cmd = sub.add_parser("sandbox", help="Inspect Locdex sandbox capabilities and modes.")
     sandbox_sub = sandbox_cmd.add_subparsers(dest="sandbox_action", required=True)
@@ -272,6 +278,26 @@ def cli(argv: list[str] | None = None) -> int:
         except (ModelInstallError, ValueError) as exc:
             print(f"Locdex model error: {exc}")
             return 1
+
+    if args.command == "mcp":
+        try:
+            servers = load_mcp_servers(args.repo)
+        except MCPConfigError as exc:
+            print(f"Locdex MCP config error: {exc}")
+            return 1
+        _print_json(
+            {
+                "servers": {
+                    name: config.to_dict()
+                    for name, config in servers.items()
+                },
+                "note": (
+                    "MCP tool execution requires the optional locdex[mcp] extra, "
+                    "a network-enabled sandbox, and normal Locdex permission approval."
+                ),
+            }
+        )
+        return 0
 
     if args.command == "sandbox":
         if args.sandbox_action == "status":
