@@ -68,10 +68,10 @@ mod windows {
     use std::ffi::OsStr;
     use std::iter::once;
     use std::os::windows::ffi::OsStrExt;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
     use windows_sys::Win32::Security::{
-        CreateRestrictedToken, OpenProcessToken, DISABLE_MAX_PRIVILEGE,
+        CreateRestrictedToken, DISABLE_MAX_PRIVILEGE,
         TOKEN_ASSIGN_PRIMARY, TOKEN_DUPLICATE, TOKEN_QUERY,
     };
     use windows_sys::Win32::System::JobObjects::{
@@ -81,7 +81,7 @@ mod windows {
     };
     use windows_sys::Win32::System::Threading::{
         CreateProcessWithTokenW, GetCurrentProcess, GetExitCodeProcess,
-        ResumeThread, WaitForSingleObject, CREATE_SUSPENDED, LOGON_WITH_PROFILE,
+        OpenProcessToken, ResumeThread, WaitForSingleObject, CREATE_SUSPENDED, LOGON_WITH_PROFILE,
         PROCESS_INFORMATION, STARTUPINFOW, INFINITE,
     };
 
@@ -89,7 +89,7 @@ mod windows {
 
     impl Drop for Handle {
         fn drop(&mut self) {
-            if self.0 != 0 {
+            if !self.0.is_null() {
                 unsafe {
                     CloseHandle(self.0);
                 }
@@ -141,14 +141,14 @@ mod windows {
 
     fn restricted_token() -> Result<Handle, String> {
         unsafe {
-            let mut source: HANDLE = 0;
+            let mut source: HANDLE = std::ptr::null_mut();
             let access = TOKEN_ASSIGN_PRIMARY | TOKEN_DUPLICATE | TOKEN_QUERY;
             if OpenProcessToken(GetCurrentProcess(), access, &mut source) == 0 {
                 return Err(String::from("OpenProcessToken failed"));
             }
             let source = Handle(source);
 
-            let mut restricted: HANDLE = 0;
+            let mut restricted: HANDLE = std::ptr::null_mut();
             if CreateRestrictedToken(
                 source.0,
                 DISABLE_MAX_PRIVILEGE,
@@ -170,7 +170,7 @@ mod windows {
     fn create_job() -> Result<Handle, String> {
         unsafe {
             let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
-            if job == 0 {
+            if job.is_null() {
                 return Err(String::from("CreateJobObjectW failed"));
             }
             let job = Handle(job);
