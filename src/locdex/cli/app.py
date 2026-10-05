@@ -20,6 +20,7 @@ from ..models import (
 )
 from ..qualification import qualify_model
 from ..sandbox import SandboxMode, detect_sandbox_capabilities, profile_for_mode
+from ..session import PersistentSteeringQueue, SessionState, list_sessions
 from ..security import (
     ApprovalChoice,
     PermissionController,
@@ -57,6 +58,11 @@ def build_parser() -> argparse.ArgumentParser:
     resume_cmd = sub.add_parser("resume", help="Resume an interactive Locdex session.")
     resume_cmd.add_argument("session_id", nargs="?")
     resume_cmd.add_argument("--repo", default=".")
+    steer_cmd = sub.add_parser("steer", help="Steer an active Locdex session from another terminal.")
+    steer_cmd.add_argument("session_id")
+    steer_cmd.add_argument("message")
+    cancel_cmd = sub.add_parser("cancel", help="Cancel an active Locdex session task.")
+    cancel_cmd.add_argument("session_id")
 
     model = sub.add_parser("model", help="Manage local GGUF models.")
     model_sub = model.add_subparsers(dest="model_action", required=True)
@@ -238,6 +244,28 @@ def cli(argv: list[str] | None = None) -> int:
 
     if args.command == "resume":
         return run_interactive(args.repo, resume_id=args.session_id)
+
+    if args.command == "steer":
+        try:
+            SessionState.load(args.session_id)
+        except FileNotFoundError as exc:
+            print(f"Locdex session error: {exc}")
+            return 1
+        queue = PersistentSteeringQueue(args.session_id)
+        queue.submit(args.message)
+        print(f"Steering queued for session {args.session_id}.")
+        return 0
+
+    if args.command == "cancel":
+        try:
+            SessionState.load(args.session_id)
+        except FileNotFoundError as exc:
+            print(f"Locdex session error: {exc}")
+            return 1
+        queue = PersistentSteeringQueue(args.session_id)
+        queue.cancel()
+        print(f"Cancellation requested for session {args.session_id}.")
+        return 0
 
     if args.command == "status":
         _print_json(detect_hardware().to_dict())
