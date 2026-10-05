@@ -145,10 +145,28 @@ def _bounded_timeout(value: int) -> int:
     return max(1, min(int(value), MAX_COMMAND_SECONDS))
 
 
-def _git(repo_path: str, *args: str, timeout: int = 120) -> subprocess.CompletedProcess[str]:
+def _git(
+    repo_path: str,
+    *args: str,
+    timeout: int = 120,
+    sandbox_mode: str | None = None,
+) -> subprocess.CompletedProcess[str]:
+    argv = ["git", *args]
+    wrapped_argv = argv
+    if sandbox_mode:
+        try:
+            wrapped_argv, _ = wrap_command(
+                repo_path,
+                str(_root(repo_path)),
+                argv,
+                sandbox_mode,
+            )
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+
     try:
         return subprocess.run(
-            ["git", *args],
+            wrapped_argv,
             cwd=_root(repo_path),
             capture_output=True,
             text=True,
@@ -156,10 +174,10 @@ def _git(repo_path: str, *args: str, timeout: int = 120) -> subprocess.Completed
             errors="replace",
             timeout=_bounded_timeout(timeout),
             check=False,
-            env=_sanitized_env(),
+            env=_sanitized_env(sandbox_mode),
         )
     except FileNotFoundError as exc:
-        raise ToolError("git is not installed or not on PATH.") from exc
+        raise ToolError("git or the selected sandbox backend is not installed or not on PATH.") from exc
     except subprocess.TimeoutExpired as exc:
         raise ToolError(f"git {' '.join(args)} timed out.") from exc
 
@@ -455,8 +473,14 @@ def run_tests(repo_path: str, *, sandbox_mode: str | None = None) -> dict[str, A
     }
 
 
-def git_status(repo_path: str) -> dict[str, Any]:
-    process = _git(repo_path, "status", "--short", "--branch")
+def git_status(repo_path: str, *, sandbox_mode: str | None = None) -> dict[str, Any]:
+    process = _git(
+        repo_path,
+        "status",
+        "--short",
+        "--branch",
+        sandbox_mode=sandbox_mode,
+    )
     return {
         "ok": process.returncode == 0,
         "output": (process.stdout + process.stderr)[-MAX_TOOL_OUTPUT:],
@@ -467,6 +491,8 @@ def git_diff(
     repo_path: str,
     staged: bool = False,
     path: str | None = None,
+    *,
+    sandbox_mode: str | None = None,
 ) -> dict[str, Any]:
     args = ["diff"]
     if staged:
@@ -474,7 +500,7 @@ def git_diff(
     if path:
         safe_path = _relative(repo_path, _safe_resolve(repo_path, path))
         args.extend(["--", safe_path])
-    process = _git(repo_path, *args)
+    process = _git(repo_path, *args, sandbox_mode=sandbox_mode)
     return {
         "ok": process.returncode == 0,
         "output": (process.stdout + process.stderr)[-MAX_TOOL_OUTPUT:],
@@ -485,9 +511,11 @@ def git_add(
     repo_path: str,
     paths: list[str] | None = None,
     all_changes: bool = False,
+    *,
+    sandbox_mode: str | None = None,
 ) -> dict[str, Any]:
     if all_changes:
-        process = _git(repo_path, "add", "-A")
+        process = _git(repo_path, "add", "-A", sandbox_mode=sandbox_mode)
     else:
         if not paths:
             raise ToolError("git_add requires paths or all_changes=true.")
@@ -495,14 +523,25 @@ def git_add(
             _relative(repo_path, _safe_resolve(repo_path, item))
             for item in paths
         ]
-        process = _git(repo_path, "add", "--", *safe)
+        process = _git(repo_path, "add", "--", *safe, sandbox_mode=sandbox_mode)
     return {"ok": process.returncode == 0, "output": (process.stdout + process.stderr)[-MAX_TOOL_OUTPUT:]}
 
 
-def git_commit(repo_path: str, message: str) -> dict[str, Any]:
+def git_commit(
+    repo_path: str,
+    message: str,
+    *,
+    sandbox_mode: str | None = None,
+) -> dict[str, Any]:
     if not message.strip():
         raise ToolError("Commit message cannot be empty.")
-    process = _git(repo_path, "commit", "-m", message.strip())
+    process = _git(
+        repo_path,
+        "commit",
+        "-m",
+        message.strip(),
+        sandbox_mode=sandbox_mode,
+    )
     return {"ok": process.returncode == 0, "output": (process.stdout + process.stderr)[-MAX_TOOL_OUTPUT:]}
 
 
@@ -511,6 +550,8 @@ def git_pull(
     remote: str = "origin",
     branch: str | None = None,
     rebase: bool = False,
+    *,
+    sandbox_mode: str | None = None,
 ) -> dict[str, Any]:
     args = ["pull"]
     if rebase:
@@ -518,7 +559,12 @@ def git_pull(
     args.append(remote)
     if branch:
         args.append(branch)
-    process = _git(repo_path, *args, timeout=MAX_COMMAND_SECONDS)
+    process = _git(
+        repo_path,
+        *args,
+        timeout=MAX_COMMAND_SECONDS,
+        sandbox_mode=sandbox_mode,
+    )
     return {"ok": process.returncode == 0, "output": (process.stdout + process.stderr)[-MAX_TOOL_OUTPUT:]}
 
 
@@ -527,6 +573,8 @@ def git_push(
     remote: str = "origin",
     branch: str | None = None,
     set_upstream: bool = False,
+    *,
+    sandbox_mode: str | None = None,
 ) -> dict[str, Any]:
     args = ["push"]
     if set_upstream:
@@ -537,7 +585,12 @@ def git_push(
         args.append(remote)
         if branch:
             args.append(branch)
-    process = _git(repo_path, *args, timeout=MAX_COMMAND_SECONDS)
+    process = _git(
+        repo_path,
+        *args,
+        timeout=MAX_COMMAND_SECONDS,
+        sandbox_mode=sandbox_mode,
+    )
     return {"ok": process.returncode == 0, "output": (process.stdout + process.stderr)[-MAX_TOOL_OUTPUT:]}
 
 
@@ -667,12 +720,13 @@ def execute_tool(
         except (MCPConfigError, MCPUnavailableError) as exc:
             raise ToolError(str(exc)) from exc
     if name == "git_status":
-        return git_status(repo_path)
+        return git_status(repo_path, sandbox_mode=sandbox_mode)
     if name == "git_diff":
         return git_diff(
             repo_path,
             bool(args.get("staged", False)),
             str(args["path"]) if args.get("path") else None,
+            sandbox_mode=sandbox_mode,
         )
     if name == "git_add":
         paths = args.get("paths")
@@ -680,15 +734,25 @@ def execute_tool(
             not isinstance(paths, list) or not all(isinstance(item, str) for item in paths)
         ):
             raise ToolError("git_add paths must be a list of strings")
-        return git_add(repo_path, paths, bool(args.get("all_changes", False)))
+        return git_add(
+            repo_path,
+            paths,
+            bool(args.get("all_changes", False)),
+            sandbox_mode=sandbox_mode,
+        )
     if name == "git_commit":
-        return git_commit(repo_path, str(args.get("message", "")))
+        return git_commit(
+            repo_path,
+            str(args.get("message", "")),
+            sandbox_mode=sandbox_mode,
+        )
     if name == "git_pull":
         return git_pull(
             repo_path,
             str(args.get("remote", "origin")),
             str(args["branch"]) if args.get("branch") else None,
             bool(args.get("rebase", False)),
+            sandbox_mode=sandbox_mode,
         )
     if name == "git_push":
         return git_push(
@@ -696,6 +760,7 @@ def execute_tool(
             str(args.get("remote", "origin")),
             str(args["branch"]) if args.get("branch") else None,
             bool(args.get("set_upstream", False)),
+            sandbox_mode=sandbox_mode,
         )
 
     raise ToolError(f"Tool is registered but not implemented: {name}")
