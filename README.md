@@ -63,6 +63,12 @@ Then run Locdex inside a project:
 
 ```bash
 cd my-project
+locdex
+```
+
+Running `locdex` opens a persistent interactive session. For scripts/CI, the bounded one-shot command remains available:
+
+```bash
 locdex task --task "Fix the failing authentication refresh test."
 ```
 
@@ -114,6 +120,104 @@ locdex task \
 ```
 
 Native Locdex security rules remain in force underneath permission modes. Dangerous operations stay blocked, workspace boundaries are enforced, Git writes still require explicit task intent, failed/incomplete agent runs roll back Locdex-owned mutations, and tests are protected from opportunistic rewriting unless the user explicitly asks to change them.
+
+## Interactive sessions
+
+The normal Locdex experience is a persistent repository session:
+
+```text
+Locdex interactive
+Session: 7d6c8a13d4ef
+Repository: /workspace/project
+Model: qwen25-7b
+Permissions: ask
+Sandbox: workspace-write
+
+locdex> Fix the refresh-token bug.
+```
+
+Session state stores task summaries, durable user notes, permission/sandbox choices, the latest ChangeSet diff, and local checkpoint references. Exact source is re-read from the repository rather than copied indefinitely into session history.
+
+Useful commands:
+
+```text
+/help
+/status
+/model qwen25-14b
+/permissions ask
+/sandbox workspace-write
+/diff
+/checkpoints
+/undo
+/sessions
+/note Do not modify migrations.
+/compact
+/new
+/exit
+```
+
+Resume the latest session for a repository:
+
+```bash
+locdex resume
+```
+
+Or a specific session:
+
+```bash
+locdex resume <session-id>
+```
+
+Completed tasks that changed files create a local checkpoint. `/undo` restores only the files Locdex changed and refuses to overwrite files that have diverged since the checkpoint.
+
+## Sandboxing
+
+Permissions and sandboxing are separate controls:
+
+- **permissions** decide whether the user authorized an action;
+- **sandboxing** limits what the process can actually access even after approval.
+
+Sandbox modes:
+
+| Mode | Workspace | Commands | Network / remote Git |
+| --- | --- | --- | --- |
+| `read-only` | read only | blocked | blocked |
+| `workspace-write` | writable | allowed | blocked |
+| `workspace-network` | writable | allowed | allowed subject to permissions |
+| `unrestricted` | native Locdex policy | allowed | allowed subject to permissions |
+
+The default is `workspace-write`.
+
+Inspect the sandbox backend on your machine:
+
+```bash
+locdex sandbox status
+locdex sandbox modes
+```
+
+On Linux, if `bubblewrap` is installed, Locdex runs development commands inside an OS filesystem sandbox and uses a separate network namespace when network access is disabled. On Windows, the current backend is explicitly reported as `logical`: workspace/tool policy, protected-path enforcement, command restrictions, secret-stripped environments, and network-defense environment variables are active, but Locdex does not claim AppContainer-level OS isolation yet.
+
+Choose a sandbox for one-shot tasks:
+
+```bash
+locdex task \
+  --sandbox workspace-write \
+  --permission-mode ask \
+  --task "Fix the parser and run its tests."
+```
+
+## Project instructions and local skills
+
+Locdex automatically reads repository guidance from:
+
+```text
+AGENTS.md
+LOCDEX.md
+.locdex/instructions.md
+.locdex/skills/*.md
+```
+
+These instructions are injected before the current task, below native Locdex safety policy. This lets projects persist conventions such as package manager choice, protected directories, required tests, release workflows, and repository-specific procedures.
 
 ## Model profiles
 
@@ -179,6 +283,7 @@ defaults:
   max_steps: 8
   mode: balanced
   permission_mode: auto-edit
+  sandbox_mode: workspace-write
 
 agents:
   - name: backend
@@ -203,6 +308,36 @@ locdex agents run --config agents.yaml --repo . --parallel 2
 Each agent receives an isolated Git worktree and branch. Locdex does not auto-commit or auto-merge agent changes. Multi-agent runs currently require a clean base working tree. Parallelism defaults to 1 so local users do not accidentally load several large models into RAM.
 
 Each agent can set its own `permission_mode`. Interactive `ask` mode is supported for serial runs (`--parallel 1`). Parallel runs require non-interactive policies such as `plan`, `auto-edit`, `trusted`, or `unrestricted` so approval prompts cannot collide across worker threads.
+
+## MCP tools
+
+MCP support is optional:
+
+```bash
+python -m pip install "locdex[mcp]"
+```
+
+Configure local stdio servers in `.locdex/mcp.json`:
+
+```json
+{
+  "servers": {
+    "docs": {
+      "command": "python",
+      "args": ["tools/docs_server.py"],
+      "env": {}
+    }
+  }
+}
+```
+
+Inspect configured servers:
+
+```bash
+locdex mcp list
+```
+
+Locdex exposes MCP to the agent through two auditable tools: `mcp_list_tools` and `mcp_call`. MCP calls are classified as network/external actions: the default `workspace-write` sandbox blocks them. A user must opt into a network-enabled sandbox and normal permission approval still applies. The stdio server process is wrapped by the active OS sandbox backend when one is available.
 
 ## Repository intelligence and context
 
@@ -243,9 +378,13 @@ locdex telemetry flush
 ## Architecture
 
 ```text
-CLI / future IDE surfaces
+Interactive CLI / future IDE surfaces
         ↓
-Permission + policy layer
+Session manager + event stream + checkpoints
+        ↓
+Permission policy
+        ↓
+Sandbox policy / OS sandbox backend
         ↓
 Agent orchestrator
         ↓
