@@ -15,6 +15,7 @@ from ..security import (
 )
 from ..session import (
     ChangeSet,
+    PersistentSteeringQueue,
     SessionState,
     SessionTask,
     create_checkpoint,
@@ -319,6 +320,12 @@ def run_interactive(
             print(f"Unknown command: {command}. Type /help.")
             continue
 
+        steering_queue = PersistentSteeringQueue(state.session_id)
+        steering_queue.reset_cancel()
+        # Drain stale steering left from a previous completed run. New messages
+        # submitted after execution begins are consumed between model turns.
+        steering_queue.drain()
+
         permission_controller = PermissionController(
             state.permission_mode,
             approval_callback=(
@@ -342,6 +349,7 @@ def run_interactive(
                 sandbox_mode=state.sandbox_mode,
                 event_bus=bus,
                 additional_context=_session_context(state),
+                steering_queue=steering_queue,
                 progress=None,
             )
         except Exception as exc:  # noqa: BLE001
