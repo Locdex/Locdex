@@ -5,6 +5,7 @@ from .permissions import (
     PermissionMode,
     PermissionRequest,
     build_tool_preview,
+    format_permission_details,
     format_permission_request,
 )
 from .policy import RiskClass, SecurityDecision, native_authorize
@@ -19,6 +20,7 @@ __all__ = [
     "RiskClass",
     "SecurityDecision",
     "build_tool_preview",
+    "format_permission_details",
     "format_permission_request",
     "native_authorize",
     "redact_secrets",
