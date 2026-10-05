@@ -78,19 +78,14 @@ Locdex separates model decisions from runtime permission decisions. A model can 
 
 The default CLI mode is `ask`. Read-only repository inspection proceeds automatically. Before a write, command, or Git mutation, Locdex can show the proposed action and ask you to allow it once, allow similar actions for the current session, or deny it.
 
-Example:
+Permission prompts are compact by default so large repositories do not flood the terminal:
 
 ```text
-Permission required: write | replace_symbol
-------------------------------------------------------------------------
---- a/src/auth/token.py::refresh
-+++ b/src/auth/token.py::refresh
--    if token.expiry < now:
-+    if token.expiry <= now:
-         refresh(token)
-------------------------------------------------------------------------
-[y] allow once   [a] allow similar actions this session   [n] deny
+Allow Locdex to edit src/auth/token.py?
+[y] once  [a] similar this session  [d] details  [N] deny
 ```
+
+Press `d` only when you want the bounded command/diff details. Permission previews are intentionally capped and are built from the requested operation rather than dumping an entire target file.
 
 Permission modes:
 
