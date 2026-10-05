@@ -141,7 +141,8 @@ Rules:
 12. Do not claim an edit/test happened unless a tool result proves it.
 13. If the task genuinely cannot be completed locally after inspection and a concrete attempt, use action "escalate".
 14. Locdex may perform deterministic repository retrieval before your first decision. Use that evidence; do not repeat the same retrieval unless source may be stale or more exact context is needed.
-15. When complete, use action "final" with a concise summary.
+15. MCP/external tools are optional and may require a network-enabled sandbox plus user approval. Use them only when the task genuinely requires a configured external service; do not repeatedly retry a sandbox- or permission-denied external call.
+16. When complete, use action "final" with a concise summary.
 
 Return exactly one schema-valid JSON object per turn.
 
