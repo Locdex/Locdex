@@ -7,6 +7,7 @@ from locdex.security import (
     PermissionMode,
     RiskClass,
     build_tool_preview,
+    format_permission_details,
     format_permission_request,
 )
 
@@ -145,11 +146,12 @@ def test_trusted_allows_execute_but_still_requires_git_approval(tmp_path):
     assert git.allowed is False
 
 
-def test_replace_symbol_preview_shows_before_and_after(tmp_path):
+def test_replace_symbol_preview_is_bounded_and_does_not_dump_file(tmp_path):
     target = tmp_path / "app.py"
     target.write_text(
         "def value():\n"
-        "    return 1\n",
+        "    return 1\n"
+        + ("# filler\n" * 5000),
         encoding="utf-8",
     )
 
@@ -163,8 +165,10 @@ def test_replace_symbol_preview_shows_before_and_after(tmp_path):
         },
     )
 
-    assert "-    return 1" in preview
-    assert "+    return 2" in preview
+    assert "Replace Python symbol 'value' in app.py." in preview
+    assert "return 2" in preview
+    assert "# filler" not in preview
+    assert len(preview) < 5000
 
 
 def test_plan_mode_blocks_structured_verification_execution(tmp_path):
@@ -210,6 +214,58 @@ def test_permission_request_describes_reason_and_access(tmp_path):
 
     request = seen[0]
     rendered = format_permission_request(request)
-    assert "Verify the current workspace changes." in rendered
-    assert "execute:local-process" in rendered
-    assert "Run the detected project test suite." in rendered
+    details = format_permission_details(request)
+
+    assert rendered == "Allow Locdex to run project tests?"
+    assert "Verify the current workspace changes." in details
+    assert "execute:local-process" in details
+    assert "Run the detected project test suite." in details
+
+
+def test_write_permission_is_compact_by_default(tmp_path):
+    seen = []
+
+    def capture(request):
+        seen.append(request)
+        return ApprovalChoice.DENY
+
+    controller = PermissionController(
+        PermissionMode.ASK,
+        approval_callback=capture,
+    )
+    controller.authorize(
+        repo_path=str(tmp_path),
+        tool="replace_in_file",
+        risk=RiskClass.WRITE,
+        args={
+            "path": "src/calculator.py",
+            "old": "return a + b",
+            "new": "return a * b",
+        },
+    )
+
+    request = seen[0]
+    assert format_permission_request(request) == (
+        "Allow Locdex to edit src/calculator.py?"
+    )
+    details = format_permission_details(request)
+    assert "-return a + b" in details
+    assert "+return a * b" in details
+
+
+def test_large_write_preview_is_truncated(tmp_path):
+    preview = build_tool_preview(
+        str(tmp_path),
+        "write_file",
+        {
+            "path": "generated.py",
+            "content": "\n".join(
+                f"line_{index} = {index}"
+                for index in range(5000)
+            ),
+        },
+    )
+
+    assert "... details truncated ..." in preview
+    assert "line_4999" not in preview
+    assert len(preview) < 5000
