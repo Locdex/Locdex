@@ -1,0 +1,88 @@
+name: Python distribution validation and PyPI release
+
+on:
+  push:
+    branches:
+      - architecture-v3.2-ready
+      - main
+    paths:
+      - "pyproject.toml"
+      - "src/**"
+      - "README.md"
+      - "LICENSE"
+      - ".github/workflows/pypi-release.yml"
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and validate distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install build tools
+        run: python -m pip install --upgrade build twine
+      - name: Check tag corresponds to project version
+        if: github.event_name == 'release'
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+          with open("pyproject.toml", "rb") as stream:
+              version = tomllib.load(stream)["project"]["version"]
+          expected = "v" + version
+          assert os.environ["RELEASE_TAG"] == expected, (
+              "Release tag must match pyproject version: " + expected
+          )
+          PY
+      - name: Build wheel and source distribution
+        run: python -m build
+      - name: Validate package descriptions and archives
+        run: python -m twine check dist/*
+      - name: Verify package artifacts are versioned
+        run: |
+          python - <<'PY'
+          import pathlib
+          import tomllib
+          with open("pyproject.toml", "rb") as stream:
+              version = tomllib.load(stream)["project"]["version"]
+          names = {item.name for item in pathlib.Path("dist").iterdir()}
+          assert "locdex-" + version + ".tar.gz" in names, names
+          assert "locdex-" + version + "-py3-none-any.whl" in names, names
+          print("Distribution artifacts validated for", version)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: locdex-python-dist
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish reviewed release to PyPI
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/locdex/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: locdex-python-dist
+          path: dist/
+      - name: Publish to PyPI with short-lived OIDC credential
+        uses: pypa/gh-action-pypi-publish@release/v1

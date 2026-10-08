@@ -1,6 +1,6 @@
 {
   "name": "@locdex/cli",
-  "version": "0.3.3-alpha.1",
+  "version": "1.4.0-alpha.1",
   "description": "npm bootstrapper and launcher for the Locdex local-first coding-agent runtime",
   "license": "MIT",
   "bin": {

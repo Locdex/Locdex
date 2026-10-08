@@ -17,7 +17,7 @@ def test_npm_package_metadata():
     package = json.loads((NPM / "package.json").read_text(encoding="utf-8"))
 
     assert package["name"] == "@locdex/cli"
-    assert package["version"] == "0.3.3-alpha.1"
+    assert package["version"] == "1.4.0-alpha.1"
     assert package["bin"]["locdex"] == "bin/locdex.js"
     assert package["scripts"]["postinstall"] == "node scripts/install.js"
     assert package["engines"]["node"] == ">=18"

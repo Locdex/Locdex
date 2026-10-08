@@ -75,7 +75,7 @@ Locdex reports stages for Python environment creation, Python package installati
 
 The scoped package is published under the `@locdex` npm organization. The organization must be created in npm's dashboard by an authorized owner; GitHub organization membership alone does not grant npm ownership.
 
-1. Confirm the corresponding Python version (`locdex==0.3.3a1`) is available on PyPI. The npm postinstall requires it; publishing npm first produces a broken user install.
+1. Confirm the corresponding Python version (`locdex==1.4.0a1`) is available on PyPI. The npm postinstall requires it; publishing npm first produces a broken user install.
 2. Run `npm run check` and `npm pack --dry-run --ignore-scripts` from this directory. Inspect the tarball file listing before publishing.
 3. Verify `npm whoami` identifies a maintainer authorized to publish under `@locdex`, and enable npm two-factor authentication.
 4. Publish the prerelease using `npm publish --access public --tag next`. The `next` dist-tag keeps this alpha off npm's default `latest` installation path until general-release acceptance tests succeed.
