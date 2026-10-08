@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..agent import AgentEngine
+from ..runtime.llama_cpp import RuntimeExecutionError
 from ..providers.openai_compatible import CloudConfig, OpenAICompatibleSession
 from ..sandbox import SandboxMode, profile_for_mode
 from ..telemetry.outcome import record_agent_outcome
@@ -58,22 +59,60 @@ def execute_with_escalation(
     write_scope: list[str] | None = None,
     local_session=None,
 ) -> dict[str, Any]:
-    local = engine.execute(
-        task,
-        repo_path,
-        max_steps=max_steps,
-        routing_mode=routing_mode,
-        permission_controller=permission_controller,
-        sandbox_mode=sandbox_mode,
-        event_bus=event_bus,
-        additional_context=additional_context,
-        steering_queue=steering_queue,
-        progress=progress,
-        write_scope=write_scope,
-        session=local_session,
-    )
+    try:
+        local = engine.execute(
+            task,
+            repo_path,
+            max_steps=max_steps,
+            routing_mode=routing_mode,
+            permission_controller=permission_controller,
+            sandbox_mode=sandbox_mode,
+            event_bus=event_bus,
+            additional_context=additional_context,
+            steering_queue=steering_queue,
+            progress=progress,
+            write_scope=write_scope,
+            session=local_session,
+        )
+    except RuntimeExecutionError as exc:
+        # The hardened AgentEngine rolls back its own edits on exceptions.
+        # An isolated native timeout must become a result so cloud routing can
+        # recover rather than the interactive CLI abandoning the task.
+        cancelled = bool(
+            steering_queue is not None
+            and getattr(steering_queue, "cancelled", False)
+        )
+        timeout = "timed out" in str(exc).lower()
+        restored = list(getattr(engine, "_last_failure_rollback", []) or [])
+        local = {
+            "status": "cancelled" if cancelled else "error",
+            "model": engine.model_key,
+            "summary": (
+                "Local inference cancelled by the user."
+                if cancelled
+                else str(exc)[:500]
+            ),
+            "steps": 0,
+            "files_modified": [],
+            "rolled_back_files": restored,
+            "rollback_performed": bool(restored),
+            "verification": {},
+            "verification_attempts": 0,
+            "failure_class": (
+                "cancelled" if cancelled else "inference_timeout" if timeout else "runtime_error"
+            ),
+        }
+        if progress is not None:
+            progress(
+                "[Router] Local inference cancelled."
+                if cancelled
+                else "[Router] Local inference timed out; checking cloud fallback."
+                if timeout
+                else "[Router] Local runtime failed; checking cloud fallback."
+            )
+
     local["route"] = "local"
-    local["escalation_reason"] = None
+    local["escalation_reason"] = local.get("failure_class")
 
     _safe_record_outcome(
         task=task,
@@ -84,6 +123,13 @@ def execute_with_escalation(
         router_mode=routing_mode,
         escalated=_should_escalate(local),
     )
+
+    if local.get("status") == "cancelled" or (
+        steering_queue is not None
+        and bool(getattr(steering_queue, "cancelled", False))
+    ):
+        local["cloud_escalation"] = {"attempted": False, "reason": "cancelled"}
+        return local
 
     if not _should_escalate(local):
         return local
@@ -128,20 +174,32 @@ def execute_with_escalation(
             f"{config.provider}/{config.model}."
         )
 
-    cloud = cloud_engine.execute(
-        task,
-        repo_path,
-        max_steps=max_steps,
-        routing_mode="quality",
-        session=cloud_session,
-        permission_controller=permission_controller,
-        sandbox_mode=sandbox_mode,
-        event_bus=event_bus,
-        additional_context=combined_context,
-        steering_queue=steering_queue,
-        progress=progress,
-        write_scope=write_scope,
-    )
+    try:
+        cloud = cloud_engine.execute(
+            task,
+            repo_path,
+            max_steps=max_steps,
+            routing_mode="quality",
+            session=cloud_session,
+            permission_controller=permission_controller,
+            sandbox_mode=sandbox_mode,
+            event_bus=event_bus,
+            additional_context=combined_context,
+            steering_queue=steering_queue,
+            progress=progress,
+            write_scope=write_scope,
+        )
+    except Exception as exc:
+        # Hardened cloud execution rolls back its own edits on exceptions.
+        # Never surface HTTP authorization details or cloud API credentials.
+        local["cloud_escalation"] = {
+            "attempted": True,
+            "reason": "cloud_execution_failed",
+            "failure_type": type(exc).__name__[:60],
+        }
+        if progress is not None:
+            progress("[Router] Cloud fallback failed; returning local failure.")
+        return local
     cloud["route"] = "cloud"
     cloud["cloud_provider"] = config.provider
     cloud["cloud_model"] = config.model
@@ -153,7 +211,7 @@ def execute_with_escalation(
     }
     cloud["cloud_escalation"] = {
         "attempted": True,
-        "reason": str(local.get("status") or "local_failure"),
+        "reason": str(local.get("failure_class") or local.get("status") or "local_failure"),
     }
 
     _safe_record_outcome(

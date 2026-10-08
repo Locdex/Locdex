@@ -16,9 +16,10 @@ from ..agent import AgentEngine
 from .activity import ActivityState
 from ..events import AgentEvent, EventBus
 from ..models import MODEL_PROFILES, selected_model_key
+from ..providers.openai_compatible import CloudConfig
 from ..runtime.isolated import IsolatedLlamaCppSession
 from ..routing.execution import execute_with_escalation
-from ..sandbox import SandboxMode, detect_sandbox_capabilities
+from ..sandbox import SandboxMode, detect_sandbox_capabilities, profile_for_mode
 from ..security import (
     ApprovalChoice,
     PermissionController,
@@ -298,10 +299,15 @@ async def _active_task(
     engine = AgentEngine(model_key=state.model)
 
     def execute() -> dict[str, Any]:
+        can_escalate = (
+            CloudConfig.from_env().enabled
+            and profile_for_mode(state.sandbox_mode).network_access
+        )
         local_session = IsolatedLlamaCppSession(
             model_key=state.model,
             cancelled=lambda: steering_queue.cancelled,
             progress=lambda message: post("progress", message),
+            prefer_cloud_fallback=can_escalate,
         )
         try:
             return execute_with_escalation(

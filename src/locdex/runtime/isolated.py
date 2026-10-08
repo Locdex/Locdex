@@ -7,21 +7,33 @@ from multiprocessing.connection import Connection
 from typing import Any, Callable
 
 from .llama_cpp import LlamaCppSession, RuntimeExecutionError
+from .timeout_policy import (
+    estimate_inference_timeout,
+    record_generation_speed,
+)
+from .hardware import detect_hardware
 
 
 def _model_process(connection: Connection, model_key: str) -> None:
     """The child owns native llama.cpp state. A timeout can terminate it safely."""
     try:
+        started = time.monotonic()
         session = LlamaCppSession(model_key=model_key)
-        connection.send(("ready", None))
+        connection.send(("ready", {"loading_seconds": time.monotonic() - started}))
         while True:
             request = connection.recv()
             if request is None:
                 break
             messages, schema, options = request
             try:
+                started = time.monotonic()
                 value = session.json_completion(messages, schema, **options)
-                connection.send(("ok", value))
+                usage = getattr(session, "last_usage", {}) or {}
+                connection.send(("ok", {
+                    "result": value,
+                    "seconds": time.monotonic() - started,
+                    "output_tokens": usage.get("completion_tokens", 0),
+                }))
             except Exception as exc:
                 connection.send(("error", f"{type(exc).__name__}: {str(exc)[:300]}"))
     except (EOFError, BrokenPipeError):
@@ -56,11 +68,15 @@ class IsolatedLlamaCppSession:
         cancelled: Callable[[], bool] | None = None,
         progress: Callable[[str], None] | None = None,
         timeout_seconds: float | None = None,
+        prefer_cloud_fallback: bool = False,
     ):
         self.model_key = model_key
         self.cancelled = cancelled or (lambda: False)
         self.progress = progress
         self.timeout_seconds = timeout_seconds if timeout_seconds is not None else _timeout_from_env()
+        self._explicit_timeout = timeout_seconds
+        self.prefer_cloud_fallback = prefer_cloud_fallback
+        self.hardware = detect_hardware() if timeout_seconds is None else None
         self._parent: Connection | None = None
         self._process: multiprocessing.Process | None = None
         self._closed = False
@@ -122,12 +138,39 @@ class IsolatedLlamaCppSession:
     def json_completion(self, messages: list[dict[str, str]], schema: dict[str, Any], **kwargs: Any) -> dict:
         if self._closed:
             raise RuntimeExecutionError("Local inference session has already been closed.")
-        deadline = time.monotonic() + self.timeout_seconds
+        # A load budget and a generation budget are independent. The 12-step
+        # agent cap alone cannot interrupt native inference.
+        estimated_prompt = sum(
+            len(str(message.get("content", ""))) // 4
+            for message in messages
+        )
+        budget = (
+            estimate_inference_timeout(
+                self.model_key,
+                hardware=self.hardware,
+                max_tokens=int(kwargs.get("max_tokens", 512)),
+                prompt_tokens=estimated_prompt,
+                prefer_cloud_fallback=self.prefer_cloud_fallback,
+            )
+            if self._explicit_timeout is None
+            else None
+        )
+        load_limit = (
+            self._explicit_timeout if budget is None else budget.load_seconds
+        )
+        generate_limit = (
+            self._explicit_timeout if budget is None else budget.generate_seconds
+        )
+        self.timeout_seconds = load_limit
         self._ensure_started()
         assert self._parent is not None
         if not getattr(self, "_ready", False):
-            self._announce("[Inference] Loading local model...")
-            kind, payload = self._receive(deadline, "loading model")
+            self._announce(
+                f"[Inference] Loading {self.model_key}; deadline {load_limit:g}s"
+            )
+            kind, payload = self._receive(
+                time.monotonic() + load_limit, "loading model"
+            )
             if kind != "ready":
                 self.close()
                 raise RuntimeExecutionError(str(payload)[:350])
@@ -135,18 +178,37 @@ class IsolatedLlamaCppSession:
         if self.cancelled():
             self.close()
             raise RuntimeExecutionError("Local inference cancelled.")
-        self._announce("[Inference] Generating model decision...")
+        self.timeout_seconds = generate_limit
+        self._announce(
+            f"[Inference] Generating {self.model_key}; deadline "
+            f"{generate_limit:g}s"
+            + (
+                f" ({budget.source})" if budget is not None else " (manual override)"
+            )
+        )
         try:
             self._parent.send((messages, schema, kwargs))
         except (BrokenPipeError, OSError) as exc:
             self.close()
             raise RuntimeExecutionError("Could not send request to local model process.") from exc
-        kind, payload = self._receive(deadline, "generating")
+        kind, payload = self._receive(
+            time.monotonic() + generate_limit, "generating"
+        )
         if kind != "ok":
             raise RuntimeExecutionError(str(payload)[:350])
-        if not isinstance(payload, dict):
+        if not isinstance(payload, dict) or not isinstance(payload.get("result"), dict):
             raise RuntimeExecutionError("Local inference returned a non-object response.")
-        return payload
+        if budget is not None:
+            try:
+                record_generation_speed(
+                    self.model_key,
+                    budget.backend,
+                    seconds=float(payload.get("seconds", 0)),
+                    output_tokens=int(payload.get("output_tokens", 0)),
+                )
+            except (TypeError, ValueError, OverflowError):
+                pass
+        return payload["result"]
 
     def close(self) -> None:
         if self._closed:

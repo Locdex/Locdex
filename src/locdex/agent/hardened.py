@@ -591,6 +591,7 @@ class AgentEngine(BaseAgentEngine):
         steering_queue: Any | None = None,
     ) -> dict:
         self.event_bus = event_bus
+        self._last_failure_rollback = []
         self._event(
             "agent.started",
             task=task,
@@ -675,7 +676,7 @@ class AgentEngine(BaseAgentEngine):
             # A native-inference timeout or cancellation is an error, not a
             # completed agent run. Restore Locdex-owned mutations before
             # returning control to the interactive terminal.
-            self.change_journal.rollback()
+            self._last_failure_rollback = self.change_journal.rollback()
             self._event("agent.stopped", status="error", summary="Interrupted or timed out")
             raise
 

@@ -193,3 +193,16 @@ def test_cli_router_train():
     assert args.action == "train"
     assert args.input == "events.jsonl"
     assert args.output == "router.json"
+
+
+def test_inference_budget_command():
+    args = build_parser().parse_args([
+        "inference", "budget", "--model", "smoke",
+        "--max-tokens", "256", "--prompt-tokens", "500", "--cloud-fallback",
+    ])
+    assert args.command == "inference"
+    assert args.inference_action == "budget"
+    assert args.model == "smoke"
+    assert args.max_tokens == 256
+    assert args.prompt_tokens == 500
+    assert args.cloud_fallback is True

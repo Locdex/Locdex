@@ -81,3 +81,8 @@ Unit tests cover event-driven activity text, missing/stale model activity, tool 
 ## Interactive Windows display and bounded inference
 
 `tests/test_interactive_runtime.py` checks that the prompt renders progress and a complete approval choice panel above the input, that the permission broker unblocks after an approval, and that a non-responsive isolated model process is terminated on timeout or cancellation. `tests/test_interactive_exit.py` verifies exit/Ctrl+C semantics. Manual VS Code PowerShell validation is still needed because headless CI cannot certify terminal redraw and keyboard behavior.
+
+
+## Adaptive native inference and cloud fallback
+
+`tests/test_adaptive_timeout.py` checks model-size/hardware/context-dependent budget estimates, explicit overrides, accelerated limits when cloud is permitted, and local-only calibration. `tests/test_cloud_timeout_fallback.py` checks that native timeouts are converted to local outcomes, cloud execution succeeds with explicit configuration and network-enabled sandbox, cloud remains unavailable when policy blocks it, and cancellation never escalates. Headless tests are not a substitute for real model/hardware benchmarking.

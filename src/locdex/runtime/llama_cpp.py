@@ -143,6 +143,7 @@ class LlamaCppSession:
             temperature=0.0,
         )
         self._llama = _load_llama(self.plan)
+        self.last_usage: dict[str, Any] = {}
 
     def chat(
         self,
@@ -162,9 +163,10 @@ class LlamaCppSession:
         except Exception as exc:
             raise RuntimeExecutionError(f"Inference failed: {exc}") from exc
 
+        self.last_usage = response.get("usage") or {} if isinstance(response, dict) else {}
         return {
             "text": _extract_text(response),
-            "usage": response.get("usage") if isinstance(response, dict) else None,
+            "usage": self.last_usage,
         }
 
     def json_completion(

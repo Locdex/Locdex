@@ -88,7 +88,7 @@ Locdex does not auto-commit or auto-merge final results.
 
 ## 7. Telemetry and router training
 
-Shared telemetry remains off by default:
+BASIC telemetry is enabled by default (with opt-out); RESEARCH remains separate:
 
 ```bash
 locdex telemetry status
@@ -119,7 +119,7 @@ PowerShell: run `locdex` inside your project. Enter `exit`, `quit`, `/exit`, or 
 
 ## Windows troubleshooting: activity, approval and timeouts
 
-Pull the latest source and reinstall the development build, then launch from the test project. The activity and approval panels appear above the text input. A short permission question and labeled choices must be visible together; `y` allows once and `a` allows similar actions for the session. The default isolated model-call timeout is 90 seconds; the model process is killed on a timeout or cancellation, not allowed to block the UI indefinitely.
+Pull the latest source and reinstall the development build, then launch from the test project. The activity and approval panels appear above the text input. A short permission question and labeled choices must be visible together; `y` allows once and `a` allows similar actions for the session. The interactive model process uses independently calculated load/generation deadlines based on model size, hardware capacity and locally measured inference speed. Timeouts terminate that process and produce a recoverable failure. Cloud fallback requires configured inference credentials and the `workspace-network` sandbox; telemetry credentials alone cannot provide cloud inference.
 
 ```powershell
 cd C:\Users\Ade\Documents\Repositories\locdex\Locdex
@@ -132,3 +132,10 @@ locdex
 ```
 
 The 12-step agent cap is a number of iterations, **not** a timeout. Interactive local inference runs inside a killable process so a native model call cannot freeze the entire terminal. The smoke model is only a development/testing model, not a reliable coding model.
+
+
+## Adaptive timeout and cloud recovery
+
+Use `locdex inference budget --model smoke` (or `--model qwen25-7b --max-tokens 512`) to inspect estimated local time budgets. The first run uses a bounded hardware/model heuristic; successful inference updates a **local-only** speed cache, making later estimates better grounded. To override the estimate in PowerShell: `$env:LOCDEX_INFERENCE_TIMEOUT_SECONDS = "120"` before launching `locdex`. Explicit overrides supersede the automatic cloud-accelerated deadline.
+
+When a local inference times out, Locdex can retry via a configured OpenAI-compatible provider **only if** `locdex cloud status` reports `enabled: true` and the interactive session is switched to `/sandbox workspace-network`. No cloud retry occurs on user cancellation. A telemetry-only Worker does not supply model inference. Fallback transmits task/context to the user-configured inference provider and may incur API charges.

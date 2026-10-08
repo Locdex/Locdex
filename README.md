@@ -503,3 +503,34 @@ To change the inference timeout in PowerShell before running Locdex:
 $env:LOCDEX_INFERENCE_TIMEOUT_SECONDS = "120"
 locdex
 ```
+
+
+## Adaptive local inference budget and cloud recovery
+
+Locdex computes independent model-load and generation timeouts for interactive local inference. Estimates use the selected GGUF model's approximate size, CPU core count, RAM pressure, backend/available GPU memory and requested output/context tokens. After successful inference calls, measured token throughput is saved **only in the local Locdex cache**, without prompts, source code, filenames, hardware IDs or user identifiers. The estimated generation budget adapts to these local observations; these are estimates, not performance guarantees.
+
+Check the current estimate:
+
+```powershell
+locdex inference budget --model smoke
+locdex inference budget --model qwen25-7b --max-tokens 512 --prompt-tokens 4000
+locdex inference budget --model smoke --cloud-fallback
+```
+
+A configured cloud provider shortens the maximum estimated local inference wait (unless a user explicitly overrides it), but only when the selected sandbox permits cloud access. You can still set a fixed 20–600-second per-phase limit with `LOCDEX_INFERENCE_TIMEOUT_SECONDS`. Without the override, loading and generation have separate bounded deadlines. This is a **per-call** policy, distinct from the 12-step limit.
+
+After a local native inference timeout, the execution wrapper converts the failure to a recorded agent outcome, relies on the hardened agent's rollback, and attempts its existing OpenAI-compatible cloud fallback **only if the user explicitly configured cloud inference**, enabled cloud usage, and allowed network access through the sandbox. Cancellation never causes escalation. Cloud fallback is not the same endpoint as Locdex's telemetry Worker; the telemetry API does not host models.
+
+For PowerShell, configure the provider securely for the current session (never commit an API key):
+
+```powershell
+$env:LOCDEX_CLOUD_ENABLED = "1"
+$env:LOCDEX_CLOUD_PROVIDER = "my-provider"
+$env:LOCDEX_CLOUD_MODEL = "your-real-model-id"
+$env:LOCDEX_CLOUD_BASE_URL = "https://your-provider.example/v1"
+$env:LOCDEX_CLOUD_API_KEY = "your-api-key"
+locdex cloud status
+locdex
+```
+
+Inside the Locdex chat use `/sandbox workspace-network` before starting a task. The default `workspace-write` sandbox intentionally prohibits cloud network requests. To keep all work on-device, do not configure a cloud provider and leave the default sandbox unchanged.

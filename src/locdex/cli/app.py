@@ -34,6 +34,7 @@ from ..security import (
 from ..routing import LearnedRouter, RoutingPolicy, RoutingSession, local_candidates, profile_task
 from ..routing.updater import status as router_status, update_from_manifest
 from ..routing.training.train import train_lookup_file
+from ..runtime.timeout_policy import estimate_inference_timeout
 from ..runtime import (
     RuntimeExecutionError,
     detect_hardware,
@@ -60,6 +61,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("status", help="Show detected hardware.")
+    inference_cmd = sub.add_parser("inference", help="Inspect estimated per-model inference timeouts.")
+    inference_sub = inference_cmd.add_subparsers(dest="inference_action", required=True)
+    budget_cmd = inference_sub.add_parser("budget", help="Estimate the model load and generation deadlines.")
+    budget_cmd.add_argument("--model", choices=sorted(MODEL_PROFILES))
+    budget_cmd.add_argument("--max-tokens", type=int, default=512)
+    budget_cmd.add_argument("--prompt-tokens", type=int, default=0)
+    budget_cmd.add_argument("--cloud-fallback", action="store_true")
     sub.add_parser("models", help="Compatibility alias for model list.")
     resume_cmd = sub.add_parser("resume", help="Resume an interactive Locdex session.")
     resume_cmd.add_argument("session_id", nargs="?")
@@ -284,6 +292,20 @@ def cli(argv: list[str] | None = None) -> int:
 
     if args.command == "status":
         _print_json(detect_hardware().to_dict())
+        return 0
+
+    if args.command == "inference":
+        budget = estimate_inference_timeout(
+            args.model or selected_model_key(),
+            max_tokens=args.max_tokens,
+            prompt_tokens=args.prompt_tokens,
+            prefer_cloud_fallback=args.cloud_fallback,
+        )
+        _print_json({
+            "model": args.model or selected_model_key(),
+            "timeouts": budget.to_dict(),
+            "note": "Load and generation budgets are independent; estimates are not benchmarks.",
+        })
         return 0
 
     if args.command == "models":

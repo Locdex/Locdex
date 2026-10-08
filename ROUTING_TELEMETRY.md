@@ -89,3 +89,10 @@ locdex router train \
 ```
 
 The trainer groups outcomes by task class and model and emits success rate, average cost, latency, and attempts. This is an offline artifact-building step, not online learning on user machines.
+
+
+## Adaptive timeout and cloud escalation on native inference failure
+
+In interactive sessions, a local model runs inside an isolated process. Model-load and generation deadlines are calculated separately from model size, detected CPU/RAM/GPU resources, context/output size, and locally observed token throughput. Calibration is saved locally in `inference/speed-v1.json` under Locdex's cache directory and contains only per-model/backend speed metrics. No user ID or source material is recorded.
+
+A model timeout is converted to a failed local attempt after the hardened change journal rolls back agent-owned edits. The usual cloud escalation policy is then applied: cloud must be explicitly enabled and configured, network access must be allowed by the sandbox, and the task must not have been cancelled. If no cloud service is configured (or the sandbox blocks networking), the CLI reports the local timeout without hanging. An explicit `LOCDEX_INFERENCE_TIMEOUT_SECONDS` overrides both estimated deadlines. Query local estimates using `locdex inference budget --model smoke`.
