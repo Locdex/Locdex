@@ -16,8 +16,8 @@ def test_sanitizer_rejects_unknown_sensitive_field():
  with pytest.raises(ValueError):sanitize_event(d)
 def test_queue_is_local_and_previewable(tmp_path,monkeypatch):
  monkeypatch.setenv("LOCDEX_CACHE_DIR",str(tmp_path/"cache"));clear();enqueue(_event().to_dict());assert peek()[0]["model_id"]=="qwen"
-def test_telemetry_disabled_by_default_and_no_endpoint_means_no_send(tmp_path,monkeypatch):
- monkeypatch.setenv("LOCDEX_CONFIG_DIR",str(tmp_path/"config"));monkeypatch.setenv("LOCDEX_CACHE_DIR",str(tmp_path/"cache"));monkeypatch.delenv("LOCDEX_TELEMETRY_MODE",raising=False);assert not enabled();set_enabled(True);set_endpoint("");enqueue(_event().to_dict());assert flush()["reason"]=="no_endpoint" and len(peek())==1
+def test_telemetry_basic_by_default_and_no_endpoint_means_no_send(tmp_path,monkeypatch):
+ monkeypatch.setenv("LOCDEX_CONFIG_DIR",str(tmp_path/"config"));monkeypatch.setenv("LOCDEX_CACHE_DIR",str(tmp_path/"cache"));monkeypatch.delenv("LOCDEX_TELEMETRY_MODE",raising=False);assert enabled();set_enabled(True);set_endpoint("");enqueue(_event().to_dict());assert flush()["reason"]=="no_endpoint" and len(peek())==1
 def test_research_consent_is_separate_mode(tmp_path,monkeypatch):
  from locdex.telemetry.settings import mode,set_mode
  monkeypatch.setenv("LOCDEX_CONFIG_DIR",str(tmp_path/"config"));monkeypatch.delenv("LOCDEX_TELEMETRY_MODE",raising=False);set_mode("research");assert mode()=="research"
