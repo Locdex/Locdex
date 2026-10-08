@@ -534,3 +534,50 @@ locdex
 ```
 
 Inside the Locdex chat use `/sandbox workspace-network` before starting a task. The default `workspace-write` sandbox intentionally prohibits cloud network requests. To keep all work on-device, do not configure a cloud provider and leave the default sandbox unchanged.
+
+
+## Built-in cloud providers
+
+Use `locdex cloud providers` to list supported providers, API types, base URLs and expected **environment variable names**. No provider SDK is mandatory. Native Anthropic Messages uses forced JSON-schema tool use; OpenAI, Gemini, Groq, OpenRouter, DeepSeek, Together, Mistral, and custom services use compatible Chat Completions APIs. Support for an individual model depends on that provider's model-specific compatibility.
+
+PowerShell, OpenAI example (replace with a **real** model available in your account):
+
+```powershell
+$env:LOCDEX_CLOUD_ENABLED = "1"
+$env:LOCDEX_CLOUD_PROVIDER = "openai"
+$env:LOCDEX_CLOUD_MODEL = "YOUR_OPENAI_MODEL_ID"
+$key = Read-Host "OpenAI API key" -AsSecureString
+$env:OPENAI_API_KEY = [System.Net.NetworkCredential]::new("", $key).Password
+locdex cloud status
+```
+
+Anthropic example (choose a current supported Claude model ID):
+
+```powershell
+$env:LOCDEX_CLOUD_ENABLED = "1"
+$env:LOCDEX_CLOUD_PROVIDER = "anthropic"
+$env:LOCDEX_CLOUD_MODEL = "YOUR_CLAUDE_MODEL_ID"
+$key = Read-Host "Anthropic API key" -AsSecureString
+$env:ANTHROPIC_API_KEY = [System.Net.NetworkCredential]::new("", $key).Password
+locdex cloud status
+```
+
+For Gemini, Groq, OpenRouter, DeepSeek, Together, and Mistral change the provider/model and set the respective `GEMINI_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `DEEPSEEK_API_KEY`, `TOGETHER_API_KEY`, or `MISTRAL_API_KEY`. For any other OpenAI-compatible service set `LOCDEX_CLOUD_PROVIDER=custom`, `LOCDEX_CLOUD_BASE_URL`, `LOCDEX_CLOUD_MODEL`, and `LOCDEX_CLOUD_API_KEY`.
+
+The existing `LOCDEX_CLOUD_API_KEY` environment variable overrides provider-specific key variables for backwards compatibility. Always remove the old variable before switching providers, or it may override the intended key. Environment variables apply to the current terminal session. Never commit keys or put them in a benchmark artifact.
+
+Cloud inference still requires the user to opt into the `workspace-network` sandbox. The Cloudflare telemetry endpoint is **not** an inference provider.
+
+## Public model qualification and benchmarks
+
+Locdex now supports **sanitized qualification exports**, separate from a full benchmark suite:
+
+```powershell
+locdex model qualify smoke --max-steps 8
+locdex benchmark export --input "PATH_FROM_REPORT_PATH_FIELD" --output "benchmarks/results/smoke-run-001.json"
+locdex benchmark summary --dir benchmarks/results
+```
+
+These exports deliberately strip filenames, raw source, prompts, model text, private hardware identifiers, and full paths. Only publish results you have actually run and reviewed. Keep the original qualification JSON private (in the Locdex user cache). Qualification is a basic single-fixture probe, **not** LocdexBench, SWE-bench, or a statistically meaningful leaderboard. The source, benchmark definition, method, hardware tiers, model revisions, outcomes, and failure counts must accompany broader performance claims.
+
+Publish vetted JSON in `benchmarks/results/` with Git, generate public summaries and charts in a future website `/benchmarks` page, and mirror reproducible datasets on Hugging Face. See `benchmarks/README.md`. No fake benchmark scores are included.

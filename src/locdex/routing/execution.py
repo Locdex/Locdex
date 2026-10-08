@@ -4,7 +4,7 @@ from typing import Any
 
 from ..agent import AgentEngine
 from ..runtime.llama_cpp import RuntimeExecutionError
-from ..providers.openai_compatible import CloudConfig, OpenAICompatibleSession
+from ..providers.openai_compatible import CloudConfig, make_cloud_session
 from ..sandbox import SandboxMode, profile_for_mode
 from ..telemetry.outcome import record_agent_outcome
 
@@ -163,7 +163,7 @@ def execute_with_escalation(
         closer = getattr(local_session, "close", None)
         if callable(closer):
             closer()  # free local model memory before cloud escalation
-    cloud_session = OpenAICompatibleSession(config)
+    cloud_session = make_cloud_session(config)
     cloud_engine = AgentEngine(model_key=engine.model_key)
     handoff = _escalation_packet(local)
     combined_context = "\n\n".join(

@@ -1,0 +1,26 @@
+name: Public benchmark record validation
+
+on:
+  pull_request:
+    paths:
+      - "benchmarks/**"
+      - "src/locdex/benchmark/**"
+      - ".github/workflows/benchmark-records.yml"
+  push:
+    branches: [architecture-v3.2-ready]
+    paths:
+      - "benchmarks/**"
+      - "src/locdex/benchmark/**"
+      - ".github/workflows/benchmark-records.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e .
+      - name: Reject unsafe or invalid public benchmark records
+        run: python -c "from locdex.benchmark.publish import summarize_directory; print(summarize_directory('benchmarks/results'))"

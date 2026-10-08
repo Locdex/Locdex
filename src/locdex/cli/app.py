@@ -19,7 +19,8 @@ from ..models import (
     selected_model_key,
 )
 from ..qualification import qualify_model
-from ..providers.openai_compatible import CloudConfig
+from ..benchmark.publish import export_qualification, summarize_directory
+from ..providers.openai_compatible import CloudConfig, available_providers
 from ..routing.execution import execute_with_escalation
 from ..sandbox import SandboxMode, detect_sandbox_capabilities, profile_for_mode
 from ..session import PersistentSteeringQueue, SessionState
@@ -116,7 +117,15 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_list.add_argument("--repo", default=".")
 
     cloud_cmd = sub.add_parser("cloud", help="Inspect user-configured cloud fallback.")
-    cloud_cmd.add_argument("action", choices=["status"])
+    cloud_cmd.add_argument("action", choices=["status", "providers"])
+
+    benchmark_cmd = sub.add_parser("benchmark", help="Export privacy-sanitized qualification results for public review.")
+    benchmark_sub = benchmark_cmd.add_subparsers(dest="benchmark_action", required=True)
+    benchmark_export = benchmark_sub.add_parser("export", help="Export a qualification report with only safe public fields.")
+    benchmark_export.add_argument("--input", required=True)
+    benchmark_export.add_argument("--output", required=True)
+    benchmark_summary = benchmark_sub.add_parser("summary", help="Summarize qualified records (not full coding benchmark scores).")
+    benchmark_summary.add_argument("--dir", default="benchmarks/results")
 
     sandbox_cmd = sub.add_parser("sandbox", help="Inspect Locdex sandbox capabilities and modes.")
     sandbox_sub = sandbox_cmd.add_subparsers(dest="sandbox_action", required=True)
@@ -365,8 +374,22 @@ def cli(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "cloud":
-        _print_json(CloudConfig.from_env().public_dict())
+        if args.action == "providers":
+            _print_json({"providers": available_providers(), "note": "Select provider and model using LOCDEX_CLOUD_PROVIDER and LOCDEX_CLOUD_MODEL; API keys are read from environment variables."})
+        else:
+            _print_json(CloudConfig.from_env().public_dict())
         return 0
+
+    if args.command == "benchmark":
+        try:
+            if args.benchmark_action == "export":
+                _print_json(export_qualification(args.input, args.output))
+            else:
+                _print_json(summarize_directory(args.dir))
+            return 0
+        except (ValueError, OSError, json.JSONDecodeError) as exc:
+            print(f"Locdex benchmark error: {exc}")
+            return 1
 
     if args.command == "sandbox":
         if args.sandbox_action == "status":

@@ -139,3 +139,15 @@ The 12-step agent cap is a number of iterations, **not** a timeout. Interactive 
 Use `locdex inference budget --model smoke` (or `--model qwen25-7b --max-tokens 512`) to inspect estimated local time budgets. The first run uses a bounded hardware/model heuristic; successful inference updates a **local-only** speed cache, making later estimates better grounded. To override the estimate in PowerShell: `$env:LOCDEX_INFERENCE_TIMEOUT_SECONDS = "120"` before launching `locdex`. Explicit overrides supersede the automatic cloud-accelerated deadline.
 
 When a local inference times out, Locdex can retry via a configured OpenAI-compatible provider **only if** `locdex cloud status` reports `enabled: true` and the interactive session is switched to `/sandbox workspace-network`. No cloud retry occurs on user cancellation. A telemetry-only Worker does not supply model inference. Fallback transmits task/context to the user-configured inference provider and may incur API charges.
+
+## Provider selection and public results
+
+```powershell
+locdex cloud providers
+locdex cloud status
+locdex benchmark summary --dir benchmarks/results
+```
+
+To configure cloud fallback in PowerShell, set `LOCDEX_CLOUD_ENABLED=1`, `LOCDEX_CLOUD_PROVIDER`, `LOCDEX_CLOUD_MODEL`, and the provider-specific API key environment variable. Use native Anthropic (`ANTHROPIC_API_KEY`) or OpenAI-compatible endpoints for OpenAI, Gemini, Groq, OpenRouter, DeepSeek, Together, Mistral, and custom services. `LOCDEX_CLOUD_API_KEY` overrides individual provider keys, so unset it when switching services. API keys are read only from environment variables, never written into project files.
+
+For benchmarks, run `locdex model qualify <model>`, then review the returned `report_path`. Use `locdex benchmark export --input <report_path> --output benchmarks/results/<run>.json` and `locdex benchmark summary --dir benchmarks/results`. Publish only reviewed sanitized results and clearly label these as qualification probes rather than LocdexBench scores.

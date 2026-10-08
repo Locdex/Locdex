@@ -96,3 +96,11 @@ The trainer groups outcomes by task class and model and emits success rate, aver
 In interactive sessions, a local model runs inside an isolated process. Model-load and generation deadlines are calculated separately from model size, detected CPU/RAM/GPU resources, context/output size, and locally observed token throughput. Calibration is saved locally in `inference/speed-v1.json` under Locdex's cache directory and contains only per-model/backend speed metrics. No user ID or source material is recorded.
 
 A model timeout is converted to a failed local attempt after the hardened change journal rolls back agent-owned edits. The usual cloud escalation policy is then applied: cloud must be explicitly enabled and configured, network access must be allowed by the sandbox, and the task must not have been cancelled. If no cloud service is configured (or the sandbox blocks networking), the CLI reports the local timeout without hanging. An explicit `LOCDEX_INFERENCE_TIMEOUT_SECONDS` overrides both estimated deadlines. Query local estimates using `locdex inference budget --model smoke`.
+
+## Named provider adapters
+
+`locdex cloud providers` lists supported native Anthropic and Chat Completions-compatible providers. The local-first router keeps provider use behind explicit cloud configuration and a network-enabled sandbox. A native Anthropic Messages tool-use adapter returns the Locdex action object; the OpenAI-compatible adapter uses JSON Schema output with a carefully bounded JSON-only fallback for providers lacking strict schema support. Provider-specific API keys are environment-only and never uploaded through telemetry.
+
+## Publishing real benchmark results
+
+A single calculator qualification probe is not a robust benchmark. The public repository includes a safe exporter for qualification records and `benchmarks/README.md` with rules for methodology, controlled tasks, multiple seeds, failure reporting and eventual Hugging Face distribution. Do not treat anonymized production routing telemetry as comparative benchmark scores.

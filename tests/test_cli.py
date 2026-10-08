@@ -206,3 +206,24 @@ def test_inference_budget_command():
     assert args.max_tokens == 256
     assert args.prompt_tokens == 500
     assert args.cloud_fallback is True
+
+def test_cloud_providers_command():
+    args = build_parser().parse_args(["cloud", "providers"])
+    assert args.command == "cloud"
+    assert args.action == "providers"
+
+
+def test_benchmark_export_and_summary_commands():
+    args = build_parser().parse_args([
+        "benchmark", "export", "--input", "private.json",
+        "--output", "benchmarks/results/run.json",
+    ])
+    assert args.benchmark_action == "export"
+    assert args.input == "private.json"
+    assert args.output.endswith("run.json")
+
+    args = build_parser().parse_args([
+        "benchmark", "summary", "--dir", "benchmarks/results",
+    ])
+    assert args.benchmark_action == "summary"
+    assert args.dir == "benchmarks/results"

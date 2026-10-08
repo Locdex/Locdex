@@ -47,7 +47,7 @@ def config(enabled=True):
 
 def setup(monkeypatch, enabled=True):
     monkeypatch.setattr(execution.CloudConfig, "from_env", classmethod(lambda cls: config(enabled)))
-    monkeypatch.setattr(execution, "OpenAICompatibleSession", lambda conf: CloudSession())
+    monkeypatch.setattr(execution, "make_cloud_session", lambda conf: CloudSession())
     monkeypatch.setattr(execution, "AgentEngine", lambda model_key: FakeEngine(model_key, cloud=True))
     monkeypatch.setattr(execution, "_safe_record_outcome", lambda **kwargs: None)
 
