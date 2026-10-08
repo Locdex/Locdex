@@ -99,3 +99,31 @@ def test_cancel_never_escalates_to_cloud(monkeypatch):
     )
     assert result["status"] == "cancelled"
     assert result["cloud_escalation"]["attempted"] is False
+
+def test_cloud_releases_local_model_and_carries_undo_journal(monkeypatch):
+    setup(monkeypatch)
+
+    class Closable:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    local_session = Closable()
+    local_engine = FakeEngine()
+    # Real cloud engines populate their own ChangeJournal while editing.
+    cloud_journal = object()
+
+    def cloud_factory(model_key):
+        cloud = FakeEngine(model_key, cloud=True)
+        cloud.change_journal = cloud_journal
+        return cloud
+
+    monkeypatch.setattr(execution, "AgentEngine", cloud_factory)
+    result = execution.execute_with_escalation(
+        local_engine, "fix bug", ".", local_session=local_session,
+        sandbox_mode="workspace-network",
+    )
+    assert local_session.closed
+    assert result["status"] == "completed"
+    assert local_engine.change_journal is cloud_journal
