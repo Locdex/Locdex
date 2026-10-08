@@ -1,0 +1,30 @@
+name: Windows sandbox helper
+
+on:
+  push:
+    branches:
+      - architecture-v3.2-ready
+    paths:
+      - "native/windows-sandbox/**"
+      - ".github/workflows/windows-sandbox.yml"
+  pull_request:
+    paths:
+      - "native/windows-sandbox/**"
+      - ".github/workflows/windows-sandbox.yml"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check native helper
+        working-directory: native/windows-sandbox
+        run: cargo check
+      - name: Build native helper
+        working-directory: native/windows-sandbox
+        run: cargo build --release
+      - name: Probe capabilities
+        shell: pwsh
+        run: |
+          .\native\windows-sandbox\target\release\locdex-windows-sandbox.exe capabilities

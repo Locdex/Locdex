@@ -1,0 +1,26 @@
+name: Telemetry Worker
+
+on:
+  push:
+    branches: [architecture-v3.2-ready]
+    paths:
+      - "infra/telemetry-worker/**"
+      - ".github/workflows/telemetry-worker.yml"
+  pull_request:
+    paths:
+      - "infra/telemetry-worker/**"
+      - ".github/workflows/telemetry-worker.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/telemetry-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm test
+      - run: npm run check

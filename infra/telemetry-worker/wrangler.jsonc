@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "locdex-telemetry",
+  "main": "src/index.mjs",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": true,
+  "vars": {
+    "PAUSE_INGESTION": "0"
+  },
+  "r2_buckets": [
+    { "binding": "EVENTS_R2", "bucket_name": "locdex-telemetry-events" }
+  ],
+  "analytics_engine_datasets": [
+    { "binding": "ANALYTICS", "dataset": "locdex_routing" }
+  ],
+  "ratelimits": [
+    {
+      "name": "INGEST_RATE_LIMITER",
+      "namespace_id": "11457",
+      "simple": { "limit": 800, "period": 60 }
+    }
+  ]
+}
