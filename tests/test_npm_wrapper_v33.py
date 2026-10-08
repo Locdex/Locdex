@@ -17,10 +17,12 @@ def test_npm_package_metadata():
     package = json.loads((NPM / "package.json").read_text(encoding="utf-8"))
 
     assert package["name"] == "@locdex/cli"
-    assert package["version"] == "0.3.2-alpha.1"
+    assert package["version"] == "0.3.3-alpha.1"
     assert package["bin"]["locdex"] == "bin/locdex.js"
     assert package["scripts"]["postinstall"] == "node scripts/install.js"
     assert package["engines"]["node"] == ">=18"
+    assert package["publishConfig"]["access"] == "public"
+    assert package["repository"]["directory"] == "npm/locdex-cli"
     assert {"bin", "scripts", "README.md"} <= set(package["files"])
 
 
@@ -116,3 +118,16 @@ def test_npm_package_can_be_dry_run_packed():
     assert "scripts/runtime.js" in output
     assert "README.md" in output
 
+
+
+def test_npm_python_version_pin_matches_project_metadata():
+    import re
+    project = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    installer = (NPM / "scripts" / "install.js").read_text(encoding="utf-8")
+    package = json.loads((NPM / "package.json").read_text(encoding="utf-8"))
+    project_version = re.search(r'(?m)^version\\s*=\\s*"([^"]+)"', project)
+    assert project_version is not None
+    assert f'locdex=={project_version.group(1)}' in installer
+    parts = re.fullmatch(r"(\\d+)\\.(\\d+)\\.(\\d+)-alpha\\.(\\d+)", package["version"])
+    assert parts is not None
+    assert project_version.group(1) == f"{parts[1]}.{parts[2]}.{parts[3]}a{parts[4]}"
