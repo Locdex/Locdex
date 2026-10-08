@@ -480,3 +480,26 @@ The trainer consumes the sanitized routing-event schema and produces the same ve
 
 
 Multi-agent runs support up to 16 agents in one config, up to 8 concurrent workers (`--parallel 8`), and default to 1. Interactive `ask` permissions require `--parallel 1`; parallel agents use isolated worktrees and a non-interactive permission policy. Keep concurrency low for large RAM-hungry local models.
+
+## Live terminal dashboard and bounded local inference
+
+Active interactive tasks render a live status header **above** the input rather than a bottom toolbar. It shows elapsed time, actual 1/12 step progress, up to four recent events, and the current model/operation phase. A permission request is always shown together with the short request description and explicitly labeled controls:
+
+```text
+  ┌─ Permission required ───────────────────────────
+  │ Allow Locdex to edit calculator.py?
+  │
+  │ [y] Allow once       [a] Allow similar this session
+  │ [d] Show details     [n] Deny
+  └──────────────────────────────────────────────────
+  Choice ›
+```
+
+In interactive mode, llama.cpp model inference now runs in a **separate child process**, reused for the task. A model-load/decision call exceeding `LOCDEX_INFERENCE_TIMEOUT_SECONDS` (default **90 seconds**) terminates that child, raises a visible timeout, and rolls back Locdex-owned edits before returning to the input. Cancellation checks happen during model inference rather than waiting until the next agent step. Users on slower hardware can set the environment variable to a larger limit (20–600 seconds). The **12-step cap is separate**: a step cap by itself is not a wall-clock deadline. The isolated inference worker applies to interactive local runs; other execution paths may still require their own timeout policies. Long-running non-model tools and the operating system may have separate limits.
+
+To change the inference timeout in PowerShell before running Locdex:
+
+```powershell
+$env:LOCDEX_INFERENCE_TIMEOUT_SECONDS = "120"
+locdex
+```

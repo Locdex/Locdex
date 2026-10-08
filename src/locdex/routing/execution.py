@@ -56,6 +56,7 @@ def execute_with_escalation(
     steering_queue=None,
     progress=None,
     write_scope: list[str] | None = None,
+    local_session=None,
 ) -> dict[str, Any]:
     local = engine.execute(
         task,
@@ -69,6 +70,7 @@ def execute_with_escalation(
         steering_queue=steering_queue,
         progress=progress,
         write_scope=write_scope,
+        session=local_session,
     )
     local["route"] = "local"
     local["escalation_reason"] = None

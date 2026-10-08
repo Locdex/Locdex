@@ -68,6 +68,9 @@ class ActivityState:
     current_tool: str | None = None
 
     def on_progress(self, message: str) -> str | None:
+        if message.startswith("[Inference]"):
+            self.phase = message.removeprefix("[Inference]").strip()
+            return "◌ " + self.phase
         match = STEP_RE.search(message)
         if match:
             self.step, self.max_steps = int(match.group(1)), int(match.group(2))

@@ -116,3 +116,19 @@ npm install -g @locdex/cli --foreground-scripts --loglevel=info
 ## Exit, Ctrl+C and approval handling
 
 PowerShell: run `locdex` inside your project. Enter `exit`, `quit`, `/exit`, or `/quit` to close the idle chat. During a task, the same commands request cancellation and close the chat when the operation stops. `/cancel` and Ctrl+C request normal cancellation. If a native model call does not yield, a second Ctrl+C within four seconds after the first (not an immediate duplicate) forces the process to terminate, but rollback cannot be guaranteed. Permission requests reuse the active prompt rather than cancelling its input task.
+
+## Windows troubleshooting: activity, approval and timeouts
+
+Pull the latest source and reinstall the development build, then launch from the test project. The activity and approval panels appear above the text input. A short permission question and labeled choices must be visible together; `y` allows once and `a` allows similar actions for the session. The default isolated model-call timeout is 90 seconds; the model process is killed on a timeout or cancellation, not allowed to block the UI indefinitely.
+
+```powershell
+cd C:\Users\Ade\Documents\Repositories\locdex\Locdex
+git pull origin architecture-v3.2-ready
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
+python scripts/preflight.py
+cd C:\Users\Ade\Documents\locdex-agent-test
+locdex
+```
+
+The 12-step agent cap is a number of iterations, **not** a timeout. Interactive local inference runs inside a killable process so a native model call cannot freeze the entire terminal. The smoke model is only a development/testing model, not a reliable coding model.

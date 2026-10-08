@@ -660,16 +660,24 @@ class AgentEngine(BaseAgentEngine):
         )
         guarded_session = _RepairAwareSession(inner, self)
 
-        result = super().execute(
-            task,
-            repo_path,
-            max_steps=max_steps,
-            routing_mode=routing_mode,
-            session=guarded_session,
-            progress=progress,
-            additional_context=additional_context,
-            steering_queue=steering_queue,
-        )
+        try:
+            result = super().execute(
+                task,
+                repo_path,
+                max_steps=max_steps,
+                routing_mode=routing_mode,
+                session=guarded_session,
+                progress=progress,
+                additional_context=additional_context,
+                steering_queue=steering_queue,
+            )
+        except Exception:
+            # A native-inference timeout or cancellation is an error, not a
+            # completed agent run. Restore Locdex-owned mutations before
+            # returning control to the interactive terminal.
+            self.change_journal.rollback()
+            self._event("agent.stopped", status="error", summary="Interrupted or timed out")
+            raise
 
         attempted_modified = set(result.get("files_modified") or [])
         preexisting = set(result.get("preexisting_changes") or [])

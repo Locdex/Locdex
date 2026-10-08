@@ -6,6 +6,7 @@ import queue
 import signal
 import time
 from pathlib import Path
+from collections import deque
 from typing import Any
 
 from prompt_toolkit import PromptSession
@@ -15,6 +16,7 @@ from ..agent import AgentEngine
 from .activity import ActivityState
 from ..events import AgentEvent, EventBus
 from ..models import MODEL_PROFILES, selected_model_key
+from ..runtime.isolated import IsolatedLlamaCppSession
 from ..routing.execution import execute_with_escalation
 from ..sandbox import SandboxMode, detect_sandbox_capabilities
 from ..security import (
@@ -296,19 +298,28 @@ async def _active_task(
     engine = AgentEngine(model_key=state.model)
 
     def execute() -> dict[str, Any]:
-        return execute_with_escalation(
-            engine,
-            raw,
-            state.repo_path,
-            max_steps=12,
-            routing_mode="balanced",
-            permission_controller=permission_controller,
-            sandbox_mode=state.sandbox_mode,
-            event_bus=bus,
-            additional_context=_session_context(state),
-            steering_queue=steering_queue,
+        local_session = IsolatedLlamaCppSession(
+            model_key=state.model,
+            cancelled=lambda: steering_queue.cancelled,
             progress=lambda message: post("progress", message),
         )
+        try:
+            return execute_with_escalation(
+                engine,
+                raw,
+                state.repo_path,
+                max_steps=12,
+                routing_mode="balanced",
+                permission_controller=permission_controller,
+                sandbox_mode=state.sandbox_mode,
+                event_bus=bus,
+                additional_context=_session_context(state),
+                steering_queue=steering_queue,
+                progress=lambda message: post("progress", message),
+                local_session=local_session,
+            )
+        finally:
+            local_session.close()
 
     worker = loop.run_in_executor(None, execute)
     pending_request: tuple[
@@ -317,16 +328,36 @@ async def _active_task(
     exit_after = False
     interrupt_state = _InterruptState()
 
+    recent_actions: deque[str] = deque(maxlen=4)
+
     def prompt_message() -> str:
-        return (
-            "Choice [y/a/d/N]: "
-            if pending_request is not None
-            else "locdex[working]> "
-        )
+        """The entire live status belongs above the editor, not in a bottom bar."""
+        status = activity.toolbar().split(" · Enter to steer")[0].strip()
+        rows = [f"\n  {status}"]
+        rows.extend(f"  {line}" for line in recent_actions)
+        if pending_request is not None:
+            request, _ = pending_request
+            rows.extend([
+                "",
+                "  ┌─ Permission required ───────────────────────────",
+                "  │ " + format_permission_request(request),
+                "  │",
+                "  │ [y] Allow once       [a] Allow similar this session",
+                "  │ [d] Show details     [n] Deny",
+                "  └──────────────────────────────────────────────────",
+                "  Choice › ",
+            ])
+        else:
+            rows.extend([
+                "",
+                "  Enter instructions to steer  ·  /cancel to stop  ·  exit to close",
+                "  locdex › ",
+            ])
+        return "\n".join(rows)
 
     prompt = PromptSession(
-        bottom_toolbar=activity.toolbar,
-        refresh_interval=0.125,
+        message=prompt_message,
+        refresh_interval=0.2,
     )
 
     def reject_pending_permission() -> None:
@@ -369,10 +400,7 @@ async def _active_task(
         previous_sigint = None
 
     print()
-    print(
-        "▶ Working — live actions below; type to steer. "
-        "Ctrl+C or /cancel stops the task; repeated Ctrl+C force-exits.",
-    )
+    print("Locdex is working. Activity, permissions and progress appear above the input.")
     input_task: asyncio.Task | None = None
     approval_task: asyncio.Task | None = None
     event_task: asyncio.Task | None = None
@@ -382,7 +410,7 @@ async def _active_task(
             while not worker.done():
                 if input_task is None:
                     input_task = asyncio.create_task(
-                        prompt.prompt_async(prompt_message)
+                        prompt.prompt_async()
                     )
                 if approval_task is None and pending_request is None:
                     approval_task = asyncio.create_task(
@@ -410,19 +438,17 @@ async def _active_task(
                         else activity.on_progress(str(value))
                     )
                     if description:
-                        print(f"  {description}")
+                        recent_actions.append(description)
+                        if prompt.app is not None:
+                            prompt.app.invalidate()
 
                 if approval_task is not None and approval_task in done:
                     pending_request = approval_task.result()
                     approval_task = None
                     activity.phase = "Waiting for approval"
-                    request, _ = pending_request
-                    print()
-                    print(format_permission_request(request))
-                    print(
-                        "[y] once  [a] similar this session  "
-                        "[d] details  [N] deny",
-                    )
+                    # Approval content is rendered inside the dynamic prompt
+                    # above the input. Avoid printing while prompt-toolkit owns
+                    # the terminal; it can erase important text on Windows.
                     # Leave the *existing* prompt running. Cancelling
                     # prompt_async while changing prompts can deadlock on
                     # Windows Terminal. A callable updates the prompt label.
@@ -459,11 +485,20 @@ async def _active_task(
                             continue
                         parsed = _parse_approval(message)
                         if parsed is None:
-                            print("Approval pending. Enter y, a, d, or n.")
+                            recent_actions.append("Approval pending: y / a / d / n")
+                            if prompt.app is not None:
+                                prompt.app.invalidate()
                             continue
                         broker.resolve(response, parsed)
+                        recent_actions.append(
+                            "✓ Approved: " + format_permission_request(request)
+                            if parsed is not ApprovalChoice.DENY
+                            else "✗ Denied: " + format_permission_request(request)
+                        )
                         pending_request = None
-                        activity.phase = "Resuming agent"
+                        activity.phase = "Resuming model/tool execution"
+                        if prompt.app is not None:
+                            prompt.app.invalidate()
                         continue
 
                     if not message:

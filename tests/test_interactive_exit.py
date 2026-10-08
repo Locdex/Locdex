@@ -36,7 +36,9 @@ def test_worker_prompt_does_not_cancel_for_permission_handoff():
     from locdex.cli.interactive import _active_task
 
     source = inspect.getsource(_active_task)
-    assert "prompt.prompt_async(prompt_message)" in source
+    assert "prompt.prompt_async()" in source
+    assert "message=prompt_message" in source
+    assert "bottom_toolbar=" not in source
     assert "input_task.cancel()" not in source
     assert "broker.resolve(response, parsed)" in source
     assert 'signal.signal(signal.SIGINT, on_sigint)' in source

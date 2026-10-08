@@ -77,3 +77,7 @@ Interactive feel, real local-model behavior, permission-prompt ergonomics under 
 ## Interactive activity / installation progress coverage
 
 Unit tests cover event-driven activity text, missing/stale model activity, tool completion counts, bounded output, model SHA-256 progress wiring, and pip runtime progress flag. The CI matrix also imports the packaged CLI. Real Windows terminal redraw and actual multi-GB download throughput still require a manual device run.
+
+## Interactive Windows display and bounded inference
+
+`tests/test_interactive_runtime.py` checks that the prompt renders progress and a complete approval choice panel above the input, that the permission broker unblocks after an approval, and that a non-responsive isolated model process is terminated on timeout or cancellation. `tests/test_interactive_exit.py` verifies exit/Ctrl+C semantics. Manual VS Code PowerShell validation is still needed because headless CI cannot certify terminal redraw and keyboard behavior.
