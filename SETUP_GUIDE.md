@@ -111,3 +111,8 @@ Inside `locdex`, active tasks now show an animated status bar and real-time tool
 ```powershell
 npm install -g @locdex/cli --foreground-scripts --loglevel=info
 ```
+
+
+## Exit, Ctrl+C and approval handling
+
+PowerShell: run `locdex` inside your project. Enter `exit`, `quit`, `/exit`, or `/quit` to close the idle chat. During a task, the same commands request cancellation and close the chat when the operation stops. `/cancel` and Ctrl+C request normal cancellation. If a native model call does not yield, a second Ctrl+C within four seconds after the first (not an immediate duplicate) forces the process to terminate, but rollback cannot be guaranteed. Permission requests reuse the active prompt rather than cancelling its input task.

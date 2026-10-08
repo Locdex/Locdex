@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import queue
+import signal
+import time
 from pathlib import Path
 from typing import Any
 
@@ -165,7 +168,7 @@ def _print_header(state: SessionState) -> None:
         f"({caps.backend}; "
         f"OS isolation={'yes' if caps.os_isolation else 'no'})"
     )
-    print("Type /help for commands.")
+    print("Type /help for commands; exit or /exit closes Locdex.")
     print()
 
 
@@ -185,11 +188,11 @@ Commands:
   /note <text>                Persist a session constraint/note.
   /compact                    Deterministically compact older task history.
   /new                        Start a new session for this repository.
-  /exit                       Save and exit.
+  exit | quit | /exit         Save and exit. During a task, cancel then exit.
 
 During an active agent run:
   type text                    Steer the active agent in the same terminal.
-  /cancel                     Cancel and roll back the active run.
+  /cancel or Ctrl+C           Request cancellation; Ctrl+C again force-exits.
   /status                     Show the current session and execution policy.
 
 Any other idle input is executed as a coding-agent task.
@@ -240,15 +243,41 @@ def _print_active_status(state: SessionState) -> None:
     )
 
 
+def _is_exit_command(value: str) -> bool:
+    return value.strip().casefold() in {
+        "exit", "quit", "/exit", "/quit", ":q",
+    }
+
+
+class _InterruptState:
+    """A cooperative interrupt first; emergency process exit on repeated Ctrl+C.
+
+    Force-exit deliberately skips rollback only if the user explicitly repeats
+    the interrupt. It is not used for ordinary /cancel or /exit.
+    """
+
+    def __init__(self) -> None:
+        self.last_interrupt = 0.0
+        self.count = 0
+
+    def press(self, *, now: float | None = None) -> bool:
+        moment = time.monotonic() if now is None else now
+        if self.count and moment - self.last_interrupt < 0.4:
+            # Avoid treating one terminal keypress, dispatched through both
+            # a signal handler and prompt-toolkit, as a double interrupt.
+            return False
+        self.count = self.count + 1 if moment - self.last_interrupt < 4.0 else 1
+        self.last_interrupt = moment
+        return self.count >= 2
+
+
 async def _active_task(
     state: SessionState,
     raw: str,
-) -> tuple[dict[str, Any] | None, AgentEngine | None]:
+) -> tuple[dict[str, Any] | None, AgentEngine | None, bool]:
     loop = asyncio.get_running_loop()
     broker = _ApprovalBroker(loop)
-    steering_queue = PersistentSteeringQueue(
-        state.session_id
-    )
+    steering_queue = PersistentSteeringQueue(state.session_id)
     steering_queue.reset_cancel()
     steering_queue.drain()
 
@@ -282,128 +311,212 @@ async def _active_task(
         )
 
     worker = loop.run_in_executor(None, execute)
-    # The dynamic toolbar animates while the model is generating, even if no
-    # tool events arrive. It never owns stdin or interrupts partial user input.
+    pending_request: tuple[
+        PermissionRequest, queue.Queue[ApprovalChoice]
+    ] | None = None
+    exit_after = False
+    interrupt_state = _InterruptState()
+
+    def prompt_message() -> str:
+        return (
+            "Choice [y/a/d/N]: "
+            if pending_request is not None
+            else "locdex[working]> "
+        )
+
     prompt = PromptSession(
         bottom_toolbar=activity.toolbar,
         refresh_interval=0.125,
     )
-    print()
-    print("▶ Working — live actions below; type to steer, /cancel to stop.")
-    input_task = None
-    approval_task = None
-    event_task = None
 
-    with patch_stdout():
-        while True:
-            if worker.done():
-                break
-            if input_task is None:
-                input_task = asyncio.create_task(
-                    prompt.prompt_async("locdex[working]> ")
-                )
-            if approval_task is None:
-                approval_task = asyncio.create_task(broker.pending.get())
-            if event_task is None:
-                event_task = asyncio.create_task(updates.get())
+    def reject_pending_permission() -> None:
+        nonlocal pending_request
+        if pending_request is not None:
+            _, response = pending_request
+            broker.resolve(response, ApprovalChoice.DENY)
+            pending_request = None
 
-            done, _ = await asyncio.wait(
-                {worker, input_task, approval_task, event_task},
-                return_when=asyncio.FIRST_COMPLETED,
+    def cancel_active() -> None:
+        steering_queue.cancel()
+        reject_pending_permission()
+        activity.phase = "Cancellation requested"
+        print("Cancellation requested; waiting for the current operation to stop.")
+
+    def interrupt() -> None:
+        if interrupt_state.press():
+            print(
+                "\nEmergency exit requested. WARNING: an interrupted "
+                "operation may not be rolled back.",
+                flush=True,
             )
-            if worker in done:
-                break
+            # An in-process native inference call cannot always be interrupted
+            # from Python. A repeated explicit Ctrl+C must let the user escape.
+            os._exit(130)
+        cancel_active()
 
-            if event_task in done:
-                kind, value = event_task.result()
-                event_task = None
-                description = (
-                    activity.on_event(value)
-                    if kind == "event"
-                    else activity.on_progress(str(value))
-                )
-                if description:
-                    print(f"  {description}")
-
-            if approval_task in done:
-                request, response = approval_task.result()
-                approval_task = None
-                activity.phase = "Waiting for approval"
-                if input_task is not None:
-                    input_task.cancel()
-                    await asyncio.gather(input_task, return_exceptions=True)
-                    input_task = None
-                print()
-                print(format_permission_request(request))
-                print(
-                    "[y] once  [a] similar this session  "
-                    "[d] details  [N] deny"
-                )
-                while True:
-                    try:
-                        raw_choice = (
-                            await prompt.prompt_async(
-                                "Choice [y/a/d/N]: "
-                            )
-                        ).strip().lower()
-                    except (EOFError, KeyboardInterrupt):
-                        raw_choice = "n"
-                    if raw_choice in {"d", "details", "show"}:
-                        print()
-                        print(format_permission_details(request))
-                        print()
-                        continue
-                    choice = _parse_approval(raw_choice)
-                    if choice is not None:
-                        broker.resolve(response, choice)
-                        activity.phase = "Resuming agent"
-                        break
-                    print("Enter y, a, d, or n.")
-
-            if input_task is not None and input_task in done:
-                try:
-                    message = input_task.result().strip()
-                except (EOFError, KeyboardInterrupt):
-                    message = "/cancel"
-                input_task = None
-
-                if not message:
-                    continue
-                if message.lower() == "/cancel":
-                    steering_queue.cancel()
-                    print("Cancellation requested.")
-                    continue
-                if message.lower() == "/status":
-                    _print_active_status(state)
-                    continue
-                if message.lower() in {"/help", "/?"}:
-                    print(
-                        "While working: type steering text, "
-                        "/status, or /cancel."
-                    )
-                    continue
-                if message.startswith("/"):
-                    print(
-                        "That command is available when the "
-                        "current task finishes. Use /cancel first "
-                        "if you need to change execution policy."
-                    )
-                    continue
-                steering_queue.submit(message)
-                print("Steering queued for the active run.")
-
-    for pending in (input_task, approval_task, event_task):
-        if pending is not None and not pending.done():
-            pending.cancel()
-    await asyncio.gather(
-        *(pending for pending in (input_task, approval_task, event_task) if pending is not None),
-        return_exceptions=True,
-    )
+    previous_sigint = None
     try:
-        return await worker, engine
+        previous_sigint = signal.getsignal(signal.SIGINT)
+
+        def on_sigint(_signum: int, _frame: Any) -> None:
+            # Dispatch on the loop; never modify broker queues from a signal
+            # handler or raise KeyboardInterrupt into asyncio's shutdown path.
+            loop.call_soon_threadsafe(interrupt)
+
+        signal.signal(signal.SIGINT, on_sigint)
+    except ValueError:
+        # Non-main-thread integrations cannot register OS signal handlers.
+        previous_sigint = None
+
+    print()
+    print(
+        "▶ Working — live actions below; type to steer. "
+        "Ctrl+C or /cancel stops the task; repeated Ctrl+C force-exits.",
+    )
+    input_task: asyncio.Task | None = None
+    approval_task: asyncio.Task | None = None
+    event_task: asyncio.Task | None = None
+
+    try:
+        with patch_stdout():
+            while not worker.done():
+                if input_task is None:
+                    input_task = asyncio.create_task(
+                        prompt.prompt_async(prompt_message)
+                    )
+                if approval_task is None and pending_request is None:
+                    approval_task = asyncio.create_task(
+                        broker.pending.get()
+                    )
+                if event_task is None:
+                    event_task = asyncio.create_task(updates.get())
+
+                waitables = {worker, input_task, event_task}
+                if approval_task is not None:
+                    waitables.add(approval_task)
+                done, _ = await asyncio.wait(
+                    waitables,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if worker in done:
+                    break
+
+                if event_task in done:
+                    kind, value = event_task.result()
+                    event_task = None
+                    description = (
+                        activity.on_event(value)
+                        if kind == "event"
+                        else activity.on_progress(str(value))
+                    )
+                    if description:
+                        print(f"  {description}")
+
+                if approval_task is not None and approval_task in done:
+                    pending_request = approval_task.result()
+                    approval_task = None
+                    activity.phase = "Waiting for approval"
+                    request, _ = pending_request
+                    print()
+                    print(format_permission_request(request))
+                    print(
+                        "[y] once  [a] similar this session  "
+                        "[d] details  [N] deny",
+                    )
+                    # Leave the *existing* prompt running. Cancelling
+                    # prompt_async while changing prompts can deadlock on
+                    # Windows Terminal. A callable updates the prompt label.
+                    if prompt.app is not None:
+                        prompt.app.invalidate()
+
+                if input_task is not None and input_task in done:
+                    try:
+                        message = input_task.result().strip()
+                    except (EOFError, KeyboardInterrupt):
+                        message = "/cancel"
+                        was_interrupted = True
+                    else:
+                        was_interrupted = False
+                    input_task = None
+
+                    if was_interrupted:
+                        interrupt()
+                        continue
+
+                    if pending_request is not None:
+                        request, response = pending_request
+                        if message.lower() in {"d", "details", "show"}:
+                            print()
+                            print(format_permission_details(request))
+                            print()
+                            continue
+                        if _is_exit_command(message):
+                            exit_after = True
+                            cancel_active()
+                            continue
+                        if message.lower() in {"/cancel", "cancel"}:
+                            cancel_active()
+                            continue
+                        parsed = _parse_approval(message)
+                        if parsed is None:
+                            print("Approval pending. Enter y, a, d, or n.")
+                            continue
+                        broker.resolve(response, parsed)
+                        pending_request = None
+                        activity.phase = "Resuming agent"
+                        continue
+
+                    if not message:
+                        continue
+                    if _is_exit_command(message):
+                        exit_after = True
+                        cancel_active()
+                        continue
+                    if message.lower() in {"/cancel", "cancel"}:
+                        cancel_active()
+                        continue
+                    if message.lower() == "/status":
+                        _print_active_status(state)
+                        print(activity.toolbar())
+                        continue
+                    if message.lower() in {"/help", "/?"}:
+                        print(
+                            "While working: enter steering text, /status, "
+                            "/cancel, or exit. Ctrl+C requests cancellation; "
+                            "press again for emergency termination.",
+                        )
+                        continue
+                    if message.startswith("/"):
+                        print(
+                            "That command is available after this task. "
+                            "Use /cancel first to change execution policy.",
+                        )
+                        continue
+                    steering_queue.submit(message)
+                    print("Steering queued for the active run.")
+    finally:
+        reject_pending_permission()
+        for pending in (input_task, approval_task, event_task):
+            if pending is not None and not pending.done():
+                pending.cancel()
+        await asyncio.gather(
+            *(
+                pending
+                for pending in (input_task, approval_task, event_task)
+                if pending is not None
+            ),
+            return_exceptions=True,
+        )
+        if previous_sigint is not None:
+            try:
+                signal.signal(signal.SIGINT, previous_sigint)
+            except ValueError:
+                pass
+    try:
+        return await worker, engine, exit_after
     except Exception as exc:  # noqa: BLE001
         print(f"Locdex agent error: {exc}")
-        return None, engine
+        return None, engine, exit_after
 
 
 def _record_result(
@@ -502,6 +615,10 @@ def run_interactive(
 
         if not raw:
             continue
+
+        if _is_exit_command(raw):
+            state.save()
+            return 0
 
         if raw.startswith("/"):
             command, _, remainder = raw.partition(" ")
@@ -720,14 +837,16 @@ def run_interactive(
             )
             continue
 
-        result, engine = asyncio.run(
+        result, engine, exit_after = asyncio.run(
             _active_task(state, raw)
         )
-        if result is None or engine is None:
-            continue
-        _record_result(
-            state,
-            raw,
-            result,
-            engine,
-        )
+        if result is not None and engine is not None:
+            _record_result(
+                state,
+                raw,
+                result,
+                engine,
+            )
+        if exit_after:
+            state.save()
+            return 0

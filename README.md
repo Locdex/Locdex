@@ -165,7 +165,7 @@ locdex resume <session-id>
 
 During agent runs, Locdex shows an animated live status line (elapsed time, step count, and completed tool count) plus a concise event-driven activity log for file reads/edits, commands, tests, and permission outcomes. The spinner indicates an active worker even during model generation; it is NOT a fabricated percentage-complete estimate. While an agent task is running, the same interactive terminal remains usable. Type ordinary text to steer the active run, use `/status` to inspect policy, or `/cancel` to cancel and roll back incomplete Locdex-owned changes. Permission prompts are multiplexed through the same console instead of competing for stdin.
 
-Cross-terminal steering remains available for automation or a second shell:
+Typing `exit`, `quit`, `/exit`, or `/quit` at an idle Locdex prompt now closes the chat. During an active task, those commands request cancellation and then close the chat once the running operation stops. `/cancel` or Ctrl+C requests cancellation and preserves normal rollback; if a native model/runtime call is completely stuck, press Ctrl+C **again** within four seconds (with a short gap) for emergency process termination. Emergency termination cannot guarantee rollback or completion of cleanup. Approval prompts share the same active input loop rather than cancelling and recreating terminal input.\n\nCross-terminal steering remains available for automation or a second shell:
 
 ```bash
 locdex steer <session-id> "Do not touch migrations; keep the fix inside src/auth."
@@ -477,3 +477,6 @@ The trainer consumes the sanitized routing-event schema and produces the same ve
 ## Installation progress
 
 `locdex model install <model>` displays the model-download byte percentage, transfer rate and estimated time remaining when the remote server reports a content length. Once downloaded, a separate checksum-verification bar tracks bytes checked; there is no misleading combined-install percentage. `locdex runtime install --backend auto` shows the pip wheel download progress and an explicit backend-verification step. Package installation from npm is reported in stages and can be made fully visible with `npm install -g @locdex/cli --foreground-scripts --loglevel=info`.
+
+
+Multi-agent runs support up to 16 agents in one config, up to 8 concurrent workers (`--parallel 8`), and default to 1. Interactive `ask` permissions require `--parallel 1`; parallel agents use isolated worktrees and a non-interactive permission policy. Keep concurrency low for large RAM-hungry local models.
