@@ -12,7 +12,7 @@ const {
 } = require("./runtime");
 
 const PYTHON_PACKAGE =
-  process.env.LOCDEX_PYTHON_PACKAGE || "locdex==0.3.2a1";
+  process.env.LOCDEX_PYTHON_PACKAGE || "locdex==0.3.3a1";
 
 function main() {
   if (process.env.LOCDEX_NPM_SKIP_BOOTSTRAP === "1") {
