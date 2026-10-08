@@ -9,6 +9,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
 
 from ..agent import AgentEngine
+from .activity import ActivityState
 from ..events import AgentEvent, EventBus
 from ..models import MODEL_PROFILES, selected_model_key
 from ..routing.execution import execute_with_escalation
@@ -256,7 +257,13 @@ async def _active_task(
         approval_callback=broker.request,
     )
     bus = EventBus()
-    bus.subscribe(_render_event)
+    activity = ActivityState()
+    updates: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
+
+    def post(kind: str, value: Any) -> None:
+        loop.call_soon_threadsafe(updates.put_nowait, (kind, value))
+
+    bus.subscribe(lambda event: post("event", event))
     engine = AgentEngine(model_key=state.model)
 
     def execute() -> dict[str, Any]:
@@ -271,46 +278,61 @@ async def _active_task(
             event_bus=bus,
             additional_context=_session_context(state),
             steering_queue=steering_queue,
-            progress=None,
+            progress=lambda message: post("progress", message),
         )
 
     worker = loop.run_in_executor(None, execute)
-    prompt = PromptSession()
-    print()
-    print(
-        "Agent running. Type to steer it; "
-        "use /cancel to stop."
+    # The dynamic toolbar animates while the model is generating, even if no
+    # tool events arrive. It never owns stdin or interrupts partial user input.
+    prompt = PromptSession(
+        bottom_toolbar=activity.toolbar,
+        refresh_interval=0.125,
     )
+    print()
+    print("▶ Working — live actions below; type to steer, /cancel to stop.")
+    input_task = None
+    approval_task = None
+    event_task = None
 
-    with patch_stdout(raw=True):
-        while not worker.done():
-            input_task = asyncio.create_task(
-                prompt.prompt_async("locdex[working]> ")
-            )
-            approval_task = asyncio.create_task(
-                broker.pending.get()
-            )
-            done, pending = await asyncio.wait(
-                {worker, input_task, approval_task},
+    with patch_stdout():
+        while True:
+            if worker.done():
+                break
+            if input_task is None:
+                input_task = asyncio.create_task(
+                    prompt.prompt_async("locdex[working]> ")
+                )
+            if approval_task is None:
+                approval_task = asyncio.create_task(broker.pending.get())
+            if event_task is None:
+                event_task = asyncio.create_task(updates.get())
+
+            done, _ = await asyncio.wait(
+                {worker, input_task, approval_task, event_task},
                 return_when=asyncio.FIRST_COMPLETED,
             )
-
             if worker in done:
-                for task in pending:
-                    task.cancel()
                 break
 
+            if event_task in done:
+                kind, value = event_task.result()
+                event_task = None
+                description = (
+                    activity.on_event(value)
+                    if kind == "event"
+                    else activity.on_progress(str(value))
+                )
+                if description:
+                    print(f"  {description}")
+
             if approval_task in done:
-                input_task.cancel()
-                try:
-                    await input_task
-                except (
-                    asyncio.CancelledError,
-                    EOFError,
-                    KeyboardInterrupt,
-                ):
-                    pass
                 request, response = approval_task.result()
+                approval_task = None
+                activity.phase = "Waiting for approval"
+                if input_task is not None:
+                    input_task.cancel()
+                    await asyncio.gather(input_task, return_exceptions=True)
+                    input_task = None
                 print()
                 print(format_permission_request(request))
                 print(
@@ -334,20 +356,16 @@ async def _active_task(
                     choice = _parse_approval(raw_choice)
                     if choice is not None:
                         broker.resolve(response, choice)
+                        activity.phase = "Resuming agent"
                         break
                     print("Enter y, a, d, or n.")
-                continue
 
-            if input_task in done:
-                approval_task.cancel()
-                try:
-                    await approval_task
-                except asyncio.CancelledError:
-                    pass
+            if input_task is not None and input_task in done:
                 try:
                     message = input_task.result().strip()
                 except (EOFError, KeyboardInterrupt):
                     message = "/cancel"
+                input_task = None
 
                 if not message:
                     continue
@@ -372,8 +390,15 @@ async def _active_task(
                     )
                     continue
                 steering_queue.submit(message)
-                print("Steering applied to the active run.")
+                print("Steering queued for the active run.")
 
+    for pending in (input_task, approval_task, event_task):
+        if pending is not None and not pending.done():
+            pending.cancel()
+    await asyncio.gather(
+        *(pending for pending in (input_task, approval_task, event_task) if pending is not None),
+        return_exceptions=True,
+    )
     try:
         return await worker, engine
     except Exception as exc:  # noqa: BLE001

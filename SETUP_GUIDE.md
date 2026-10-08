@@ -102,3 +102,12 @@ locdex router train --input routing-events.jsonl --output router.json
 ```
 
 This is offline training. Hands-on model/user qualification is intentionally a separate stage after the automated source/package gate.
+
+
+## Interactive activity and install progress
+
+Inside `locdex`, active tasks now show an animated status bar and real-time tool-action log while typing or steering remains available. The bar counts actual tool completions; model thinking is not exposed as fake reasoning or a percentage. Run `locdex model install qwen25-7b` for real byte-based model download and checksum progress, or `locdex runtime install --backend auto` for pip wheel transfer percentages and runtime validation. npm installation can hide lifecycle logs unless `--foreground-scripts` is passed:
+
+```powershell
+npm install -g @locdex/cli --foreground-scripts --loglevel=info
+```

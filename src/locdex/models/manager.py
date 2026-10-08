@@ -9,6 +9,7 @@ from pathlib import Path
 
 from huggingface_hub import HfApi, hf_hub_download
 from platformdirs import user_cache_dir, user_config_dir
+from tqdm.auto import tqdm
 
 from .profiles import DEFAULT_MODEL_KEY, MODEL_PROFILES, ModelProfile, get_model_profile
 
@@ -67,11 +68,28 @@ def select_model(key: str) -> str:
     return profile.key
 
 
-def _sha256(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
+def _sha256(
+    path: Path,
+    chunk_size: int = 8 * 1024 * 1024,
+    *,
+    show_progress: bool = False,
+) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as handle:
+    with (
+        tqdm(
+            total=path.stat().st_size,
+            unit="B",
+            unit_scale=True,
+            desc="Verifying SHA-256",
+            disable=not show_progress,
+            leave=True,
+            mininterval=0.2,
+        ) as bar,
+        path.open("rb") as handle,
+    ):
         for chunk in iter(lambda: handle.read(chunk_size), b""):
             digest.update(chunk)
+            bar.update(len(chunk))
     return digest.hexdigest()
 
 
@@ -116,12 +134,34 @@ def _resolve_remote_file(profile: ModelProfile) -> tuple[str, str]:
     return matches[0], revision
 
 
-def install_model(key: str, *, force: bool = False) -> dict:
+class _ModelDownloadProgress(tqdm):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("desc", "Downloading GGUF")
+        kwargs.setdefault("unit", "B")
+        kwargs.setdefault("unit_scale", True)
+        kwargs.setdefault("mininterval", 0.25)
+        kwargs.setdefault("leave", True)
+        # Do not silently suppress progress even when a launcher captures stdout.
+        kwargs["disable"] = False
+        super().__init__(*args, **kwargs)
+
+
+def install_model(
+    key: str,
+    *,
+    force: bool = False,
+    show_progress: bool = False,
+) -> dict:
     profile = get_model_profile(key)
     existing = installed_model_path(profile.key)
     if existing and not force:
+        if show_progress:
+            print(f"✓ {profile.display_name} is already installed.", flush=True)
         return model_status(profile.key)
 
+    if show_progress:
+        print(f"Locdex model: {profile.display_name}", flush=True)
+        print("1/3  Resolving model release...", flush=True)
     filename, revision = _resolve_remote_file(profile)
     model_dir = _cache_dir() / "models" / profile.key / revision[:12]
     model_dir.mkdir(parents=True, exist_ok=True)
@@ -135,6 +175,8 @@ def install_model(key: str, *, force: bool = False) -> dict:
             f"only {free / (1024 ** 3):.1f} GiB is free."
         )
 
+    if show_progress:
+        print("2/3  Downloading model (live bytes and percentage)...", flush=True)
     try:
         downloaded = Path(
             hf_hub_download(
@@ -142,6 +184,7 @@ def install_model(key: str, *, force: bool = False) -> dict:
                 filename=filename,
                 revision=revision,
                 local_dir=model_dir,
+                **({"tqdm_class": _ModelDownloadProgress} if show_progress else {}),
             )
         ).resolve()
     except Exception as exc:
@@ -150,7 +193,9 @@ def install_model(key: str, *, force: bool = False) -> dict:
     if not downloaded.is_file():
         raise ModelInstallError("Download finished but the GGUF file is missing.")
 
-    digest = _sha256(downloaded)
+    if show_progress:
+        print("3/3  Verifying model checksum...", flush=True)
+    digest = _sha256(downloaded, show_progress=show_progress)
     if profile.expected_sha256 and digest.lower() != profile.expected_sha256.lower():
         downloaded.unlink(missing_ok=True)
         raise ModelInstallError(
@@ -167,6 +212,8 @@ def install_model(key: str, *, force: bool = False) -> dict:
         "size_bytes": downloaded.stat().st_size,
     }
     _save_json(_manifest_path(profile.key), manifest)
+    if show_progress:
+        print("✓ Model installed and verified.", flush=True)
     return model_status(profile.key)
 
 

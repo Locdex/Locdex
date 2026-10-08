@@ -37,7 +37,7 @@ function main() {
     }
 
     console.log(
-      `[Locdex] Creating managed Python environment with ${candidate.info.executable}...`
+      `[Locdex] 1/3  Creating Python environment using ${candidate.info.executable}...`
     );
     run(
       candidate.command,
@@ -46,13 +46,15 @@ function main() {
     python = venvPython(root);
   }
 
-  console.log(`[Locdex] Installing Python core: ${PYTHON_PACKAGE}`);
+  console.log(`[Locdex] 2/3  Installing Python core: ${PYTHON_PACKAGE}`);
   run(python, [
     "-m",
     "pip",
     "--disable-pip-version-check",
     "install",
     "--upgrade",
+    "--progress-bar",
+    "on",
     PYTHON_PACKAGE
   ]);
 
@@ -63,6 +65,7 @@ function main() {
     );
   }
 
+  console.log("[Locdex] 3/3  Verifying Locdex CLI...");
   run(executable, ["--version"]);
 
   const marker = {
@@ -77,7 +80,7 @@ function main() {
     "utf8"
   );
 
-  console.log("[Locdex] npm bootstrap complete.");
+  console.log("[Locdex] ✓ npm bootstrap complete. Download percentages above are reported by pip when available.");
   console.log("[Locdex] Models and llama.cpp runtime are installed only when you request them.");
 }
 

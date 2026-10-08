@@ -58,3 +58,14 @@ npm pack --dry-run --ignore-scripts
 ```
 
 The npm wrapper and Python package versions should be released together.
+
+
+### Show the Python bootstrap installer progress
+
+npm hides some lifecycle-script output by default. For full stage messages and pip's real download percentages, install in a foreground terminal:
+
+```powershell
+npm install -g @locdex/cli --foreground-scripts --loglevel=info
+```
+
+Locdex reports stages for Python environment creation, Python package installation, and CLI verification. Percentages are shown for wheel transfers only when pip knows the total bytes; we do not synthesize a misleading total percentage for environment setup.

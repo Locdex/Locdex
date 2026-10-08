@@ -303,7 +303,7 @@ def cli(argv: list[str] | None = None) -> int:
                 _print_json(model_status(key))
                 return 0
             if args.model_action == "install":
-                _print_json(install_model(args.key, force=args.force))
+                _print_json(install_model(args.key, force=args.force, show_progress=True))
                 return 0
             if args.model_action == "remove":
                 removed = remove_model(args.key)

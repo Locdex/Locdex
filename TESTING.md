@@ -72,3 +72,8 @@ The Windows helper has a dedicated Windows GitHub Actions build/probe workflow.
 ## Deferred hands-on qualification
 
 Interactive feel, real local-model behavior, permission-prompt ergonomics under live generation, Windows helper execution on the target machine, and provider escalation with a real account are intentionally left for the later hands-on session. Do not treat automated unit coverage as evidence that those UX/model qualifications are complete.
+
+
+## Interactive activity / installation progress coverage
+
+Unit tests cover event-driven activity text, missing/stale model activity, tool completion counts, bounded output, model SHA-256 progress wiring, and pip runtime progress flag. The CI matrix also imports the packaged CLI. Real Windows terminal redraw and actual multi-GB download throughput still require a manual device run.

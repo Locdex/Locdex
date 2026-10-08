@@ -130,7 +130,7 @@ def build_install_command(plan: RuntimeInstallPlan, *, force_reinstall: bool = F
     ]
     if force_reinstall:
         command.append("--force-reinstall")
-    command.extend(["llama-cpp-python", "--extra-index-url", plan.index_url])
+    command.extend(["--progress-bar", "on", "llama-cpp-python", "--extra-index-url", plan.index_url])
     return command
 
 
@@ -153,6 +153,12 @@ def install_runtime(*, backend: str = "auto", repair: bool = False) -> dict:
         }
 
     command = build_install_command(plan, force_reinstall=repair)
+    print(
+        f"Installing llama.cpp runtime ({plan.backend}); pip will display "
+        "real download percentages when package sizes are available.",
+        flush=True,
+    )
+    print("1/2  Downloading and installing prebuilt runtime wheels...", flush=True)
     result = subprocess.run(command, check=False)
     if result.returncode != 0:
         raise RuntimeError(
@@ -160,11 +166,13 @@ def install_runtime(*, backend: str = "auto", repair: bool = False) -> dict:
             "Locdex did not attempt a source build."
         )
 
+    print("2/2  Verifying installed backend...", flush=True)
     after = runtime_status(hardware, expected_backend=plan.backend)
     if not after.healthy:
         raise RuntimeError(
             "llama-cpp-python installed but runtime verification failed: " + after.reason
         )
+    print("✓ Locdex runtime installed and verified.", flush=True)
     return {
         "changed": True,
         "plan": plan.to_dict(),

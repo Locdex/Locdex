@@ -163,7 +163,7 @@ Or a specific session:
 locdex resume <session-id>
 ```
 
-While an agent task is running, the same interactive terminal remains usable. Type ordinary text to steer the active run, use `/status` to inspect policy, or `/cancel` to cancel and roll back incomplete Locdex-owned changes. Permission prompts are multiplexed through the same console instead of competing for stdin.
+During agent runs, Locdex shows an animated live status line (elapsed time, step count, and completed tool count) plus a concise event-driven activity log for file reads/edits, commands, tests, and permission outcomes. The spinner indicates an active worker even during model generation; it is NOT a fabricated percentage-complete estimate. While an agent task is running, the same interactive terminal remains usable. Type ordinary text to steer the active run, use `/status` to inspect policy, or `/cancel` to cancel and roll back incomplete Locdex-owned changes. Permission prompts are multiplexed through the same console instead of competing for stdin.
 
 Cross-terminal steering remains available for automation or a second shell:
 
@@ -472,3 +472,8 @@ locdex router train --input routing-events.jsonl --output router.json
 ```
 
 The trainer consumes the sanitized routing-event schema and produces the same versioned lookup artifact used by the local router. Shared telemetry remains opt-in and does not perform online training.
+
+
+## Installation progress
+
+`locdex model install <model>` displays the model-download byte percentage, transfer rate and estimated time remaining when the remote server reports a content length. Once downloaded, a separate checksum-verification bar tracks bytes checked; there is no misleading combined-install percentage. `locdex runtime install --backend auto` shows the pip wheel download progress and an explicit backend-verification step. Package installation from npm is reported in stages and can be made fully visible with `npm install -g @locdex/cli --foreground-scripts --loglevel=info`.
