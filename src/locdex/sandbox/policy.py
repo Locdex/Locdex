@@ -74,7 +74,7 @@ def profile_for_mode(mode: str | SandboxMode) -> SandboxProfile:
 
 
 class SandboxPolicy:
-    def __init__(self, mode: str | SandboxMode = SandboxMode.WORKSPACE_WRITE):
+    def __init__(self, mode: str | SandboxMode = SandboxMode.WORKSPACE_NETWORK):
         self.profile = profile_for_mode(mode)
 
     @property

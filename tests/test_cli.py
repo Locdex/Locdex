@@ -124,11 +124,11 @@ def test_cli_task_accepts_permission_modes():
         assert args.permission_mode == mode
 
 
-def test_cli_task_defaults_to_workspace_write_sandbox():
+def test_cli_task_defaults_to_network_capable_sandbox():
     args = build_parser().parse_args(
         ["task", "--task", "Inspect app.py"]
     )
-    assert args.sandbox == "workspace-write"
+    assert args.sandbox == "workspace-network"
 
 
 def test_cli_task_accepts_sandbox_modes():

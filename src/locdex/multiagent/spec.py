@@ -27,7 +27,7 @@ class AgentDefinition:
     max_steps: int = 8
     mode: str = "balanced"
     permission_mode: str = PermissionMode.ASK.value
-    sandbox_mode: str = SandboxMode.WORKSPACE_WRITE.value
+    sandbox_mode: str = SandboxMode.WORKSPACE_NETWORK.value
     write_scope: tuple[str, ...] = ()
     role: str = "worker"
     depends_on: tuple[str, ...] = ()
@@ -125,7 +125,7 @@ def _definition(raw: dict[str, Any], defaults: dict[str, Any]) -> AgentDefinitio
             "sandbox_mode",
             defaults.get(
                 "sandbox_mode",
-                SandboxMode.WORKSPACE_WRITE.value,
+                SandboxMode.WORKSPACE_NETWORK.value,
             ),
         )
     ).strip().lower()

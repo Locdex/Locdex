@@ -50,6 +50,13 @@ def setup(monkeypatch, enabled=True):
     monkeypatch.setattr(execution, "make_cloud_session", lambda conf: CloudSession())
     monkeypatch.setattr(execution, "AgentEngine", lambda model_key: FakeEngine(model_key, cloud=True))
     monkeypatch.setattr(execution, "_safe_record_outcome", lambda **kwargs: None)
+    monkeypatch.setattr(
+        execution, "collect_cloud_evidence",
+        lambda *args, **kwargs: SimpleNamespace(
+            text="## task_source\\nrelevant calculator fixture",
+            tokens=12, sections=("task_source",), redactions=0,
+        ),
+    )
 
 
 def test_local_timeout_falls_back_to_configured_cloud(monkeypatch):

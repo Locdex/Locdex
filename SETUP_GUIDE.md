@@ -73,7 +73,7 @@ LOCDEX_CLOUD_OUTPUT_COST_PER_MILLION
 LOCDEX_CLOUD_CONTEXT_LIMIT
 ```
 
-Cloud escalation additionally requires `workspace-network`; the default `workspace-write` sandbox will not send repository context to a provider.
+New sessions default to `workspace-network`, but cloud calls still require `LOCDEX_CLOUD_ENABLED=1` and explicit provider credentials. Existing sessions preserve their saved sandbox configuration. Set `/sandbox workspace-write` to disable network access.
 
 ## 6. Multi-agent orchestration
 
@@ -151,3 +151,11 @@ locdex benchmark summary --dir benchmarks/results
 To configure cloud fallback in PowerShell, set `LOCDEX_CLOUD_ENABLED=1`, `LOCDEX_CLOUD_PROVIDER`, `LOCDEX_CLOUD_MODEL`, and the provider-specific API key environment variable. Use native Anthropic (`ANTHROPIC_API_KEY`) or OpenAI-compatible endpoints for OpenAI, Gemini, Groq, OpenRouter, DeepSeek, Together, Mistral, and custom services. `LOCDEX_CLOUD_API_KEY` overrides individual provider keys, so unset it when switching services. API keys are read only from environment variables, never written into project files.
 
 For benchmarks, run `locdex model qualify <model>`, then review the returned `report_path`. Use `locdex benchmark export --input <report_path> --output benchmarks/results/<run>.json` and `locdex benchmark summary --dir benchmarks/results`. Publish only reviewed sanitized results and clearly label these as qualification probes rather than LocdexBench scores.
+
+## Network permissions, evidence collection and qualification errors
+
+New sessions default to `workspace-network`; network is available only through the existing permission and tool-policy checks. Network capability does not enable cloud billing or cloud inference. Old sessions keep their saved sandbox mode, which can be updated with `/sandbox workspace-network`.
+
+Before the first cloud fallback request, Locdex assembles a bounded, locally generated evidence pack from relevant source, dependency context and failure diagnostics. The cloud agent avoids repeated broad repository context in its initial prompt. API execution is only attempted after that local work completes, and only when cloud credentials are configured.
+
+`locdex model qualify smoke --max-steps 8` uses isolated model inference for both probe phases. A model timeout is recorded as a failed qualification, and Ctrl+C produces an interrupted report rather than a native inference stack trace. Run `locdex inference budget --model smoke` to inspect the local deadline estimate.

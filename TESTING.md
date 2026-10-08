@@ -86,3 +86,7 @@ Unit tests cover event-driven activity text, missing/stale model activity, tool 
 ## Adaptive native inference and cloud fallback
 
 `tests/test_adaptive_timeout.py` checks model-size/hardware/context-dependent budget estimates, explicit overrides, accelerated limits when cloud is permitted, and local-only calibration. `tests/test_cloud_timeout_fallback.py` checks that native timeouts are converted to local outcomes, cloud execution succeeds with explicit configuration and network-enabled sandbox, cloud remains unavailable when policy blocks it, and cancellation never escalates. Headless tests are not a substitute for real model/hardware benchmarking.
+
+## Qualification timeout and evidence-first cloud coverage
+
+The qualification tests verify that model prompt and agent probes share a killable isolated subprocess and return `agent_failed` on local timeout or `interrupted` on Ctrl+C. The network-default tests enforce new-session and CLI sandbox defaults while retaining explicit network-off modes. Cloud evidence tests verify deterministic local collection, bounded payloads, and basic secret redaction prior to cloud escalation.

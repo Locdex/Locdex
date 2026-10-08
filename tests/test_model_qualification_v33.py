@@ -33,6 +33,27 @@ def _runtime(healthy: bool = True) -> RuntimeStatus:
     )
 
 
+
+class FakeQualificationSession:
+    closed = False
+
+    def __init__(self, model_key):
+        self.model_key = model_key
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.closed = True
+
+    def prompt_completion(self, prompt, *, max_tokens=32):
+        return {
+            "text": "LOCDEX_QUALIFY_OK",
+            "backend": "cpu",
+            "usage": {"prompt_tokens": 5, "completion_tokens": 3},
+        }
+
+
 def test_qualification_skips_undersized_hardware(monkeypatch):
     monkeypatch.setattr(
         qualification,
@@ -69,16 +90,7 @@ def test_prompt_only_qualification_passes(monkeypatch):
         "runtime_status",
         lambda hardware: _runtime(True),
     )
-    monkeypatch.setattr(
-        qualification,
-        "run_prompt",
-        lambda *args, **kwargs: {
-            "model": "qwen25-7b",
-            "backend": "cpu",
-            "text": "LOCDEX_QUALIFY_OK",
-            "usage": {"prompt_tokens": 5, "completion_tokens": 3},
-        },
-    )
+    monkeypatch.setattr(qualification, "IsolatedLlamaCppSession", FakeQualificationSession)
 
     result = qualification.qualify_model(
         "qwen25-7b",
@@ -103,16 +115,7 @@ def test_full_qualification_requires_verified_agent_completion(monkeypatch):
         "runtime_status",
         lambda hardware: _runtime(True),
     )
-    monkeypatch.setattr(
-        qualification,
-        "run_prompt",
-        lambda *args, **kwargs: {
-            "model": "qwen25-7b",
-            "backend": "cpu",
-            "text": "LOCDEX_QUALIFY_OK",
-            "usage": None,
-        },
-    )
+    monkeypatch.setattr(qualification, "IsolatedLlamaCppSession", FakeQualificationSession)
 
     class FakeEngine:
         def __init__(self, model_key=None):
@@ -169,3 +172,43 @@ def test_model_must_be_installed_before_qualification(monkeypatch):
     assert result["status"] == "model_not_installed"
     assert result["passed"] is False
     assert "model install qwen25-7b" in result["error"]
+
+def test_qualification_agent_timeout_reports_failure_and_closes(monkeypatch):
+    from locdex.runtime.llama_cpp import RuntimeExecutionError
+    monkeypatch.setattr(qualification, "model_status", lambda key: {"installed": True})
+    monkeypatch.setattr(qualification, "detect_hardware", lambda: _hardware(16.0))
+    monkeypatch.setattr(qualification, "runtime_status", lambda hardware: _runtime(True))
+    monkeypatch.setattr(qualification, "IsolatedLlamaCppSession", FakeQualificationSession)
+
+    class SlowEngine:
+        def __init__(self, model_key):
+            pass
+
+        def execute(self, *args, **kwargs):
+            assert isinstance(kwargs["session"], FakeQualificationSession)
+            raise RuntimeExecutionError("Inference timed out after 90 seconds")
+
+    monkeypatch.setattr(qualification, "AgentEngine", SlowEngine)
+    result = qualification.qualify_model("smoke", save_report=False)
+    assert result["status"] == "agent_failed"
+    assert "timed out" in result["agent_probe"]["error"]
+    assert result["passed"] is False
+
+
+def test_qualification_ctrl_c_returns_interrupted_report(monkeypatch):
+    monkeypatch.setattr(qualification, "model_status", lambda key: {"installed": True})
+    monkeypatch.setattr(qualification, "detect_hardware", lambda: _hardware(16.0))
+    monkeypatch.setattr(qualification, "runtime_status", lambda hardware: _runtime(True))
+    monkeypatch.setattr(qualification, "IsolatedLlamaCppSession", FakeQualificationSession)
+
+    class InterruptedEngine:
+        def __init__(self, model_key):
+            pass
+
+        def execute(self, *args, **kwargs):
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(qualification, "AgentEngine", InterruptedEngine)
+    result = qualification.qualify_model("smoke", save_report=False)
+    assert result["status"] == "interrupted"
+    assert "interrupted" in result["agent_probe"]["error"]

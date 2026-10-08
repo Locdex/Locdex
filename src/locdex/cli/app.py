@@ -162,7 +162,7 @@ def build_parser() -> argparse.ArgumentParser:
     task_cmd.add_argument(
         "--sandbox",
         choices=[mode.value for mode in SandboxMode],
-        default=SandboxMode.WORKSPACE_WRITE.value,
+        default=SandboxMode.WORKSPACE_NETWORK.value,
         help="Execution sandbox: read-only, workspace-write, workspace-network, or unrestricted.",
     )
     task_cmd.add_argument(

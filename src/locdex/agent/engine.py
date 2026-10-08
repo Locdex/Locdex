@@ -295,7 +295,16 @@ class AgentEngine:
             hardware=prepared["hardware"],
         )
 
-        repo_context = self._repo_context(prepared)
+        # Cloud fallback has already aggregated/redacted targeted evidence
+        # locally; avoid copying a second broad repository context into the
+        # same paid API prompt. Exact file rereads remain available as tools.
+        prepacked_cloud_evidence = bool(
+            additional_context
+            and additional_context.startswith("LOCDEX CLOUD EVIDENCE PACK")
+        )
+        repo_context = (
+            "" if prepacked_cloud_evidence else self._repo_context(prepared)
+        )
         messages: list[dict[str, str]] = [
             {
                 "role": "system",
@@ -394,10 +403,14 @@ class AgentEngine:
                 )
 
         prelude_read_paths: set[str] = set()
-        for planned in self._deterministic_retrieval_actions(
-            task=task,
-            repo_path=repo_path,
-            prepared=prepared,
+        for planned in (
+            []
+            if prepacked_cloud_evidence
+            else self._deterministic_retrieval_actions(
+                task=task,
+                repo_path=repo_path,
+                prepared=prepared,
+            )
         ):
             name = str(planned.get("tool", ""))
             args = planned.get("args")

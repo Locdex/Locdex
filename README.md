@@ -289,7 +289,7 @@ defaults:
   max_steps: 8
   mode: balanced
   permission_mode: auto-edit
-  sandbox_mode: workspace-write
+  sandbox_mode: workspace-network
 
 agents:
   - name: backend
@@ -533,7 +533,7 @@ locdex cloud status
 locdex
 ```
 
-Inside the Locdex chat use `/sandbox workspace-network` before starting a task. The default `workspace-write` sandbox intentionally prohibits cloud network requests. To keep all work on-device, do not configure a cloud provider and leave the default sandbox unchanged.
+Inside the Locdex chat use `/sandbox workspace-network` before starting a task. The default `workspace-network` sandbox permits network-capable actions, subject to permission policies; cloud inference remains independently disabled until credentials and `LOCDEX_CLOUD_ENABLED=1` are configured. Select `workspace-write` for network-denied operation. To keep all work on-device, do not configure a cloud provider and leave the default sandbox unchanged.
 
 
 ## Built-in cloud providers
@@ -581,3 +581,14 @@ locdex benchmark summary --dir benchmarks/results
 These exports deliberately strip filenames, raw source, prompts, model text, private hardware identifiers, and full paths. Only publish results you have actually run and reviewed. Keep the original qualification JSON private (in the Locdex user cache). Qualification is a basic single-fixture probe, **not** LocdexBench, SWE-bench, or a statistically meaningful leaderboard. The source, benchmark definition, method, hardware tiers, model revisions, outcomes, and failure counts must accompany broader performance claims.
 
 Publish vetted JSON in `benchmarks/results/` with Git, generate public summaries and charts in a future website `/benchmarks` page, and mirror reproducible datasets on Hugging Face. See `benchmarks/README.md`. No fake benchmark scores are included.
+
+
+## Network-enabled default and local evidence-first cloud routing
+
+New Locdex sessions and ordinary `locdex task` runs default to `workspace-network`. This is a capability policy, not permission to run arbitrary commands or transmit code: dangerous tools remain denied, the ordinary `ask` permission gate remains active, and cloud model execution requires explicit configuration and authorization. Existing saved sessions retain their prior sandbox selection; use `/sandbox workspace-network` in an existing session or `/sandbox workspace-write` to disable network access.
+
+When local execution needs a configured cloud fallback, Locdex assembles a compact **evidence pack on the user's computer** before the first paid inference API request: targeted source snippets, retrieval plan, dependency graph, repository outline, local failure context, and bounded prior-session notes. Evidence collection uses a bounded budget based on the configured cloud context capacity and redacts detected secret patterns. The cloud agent skips redundant broad repository context and local pre-read copies while retaining the ability to reread exact files through tools. Cloud provider request messages can still contain task-relevant code, so cloud enablement constitutes consent to send that content to the selected provider; automatic redaction is not a guarantee against every secret.
+
+## Bounded qualification
+
+`locdex model qualify <model>` now runs **both** its prompt probe and the optional coding-agent probe through a reusable, isolated, killable local inference process. Each model load/generation call has an adaptive deadline. A timeout records a failed probe instead of freezing inside native llama.cpp; Ctrl+C records an `interrupted` report. Qualification is local-only, independent of the globally network-capable sandbox default, and does not silently route the test to cloud.

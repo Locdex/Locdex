@@ -4,6 +4,7 @@ from typing import Any
 
 from ..agent import AgentEngine
 from ..runtime.llama_cpp import RuntimeExecutionError
+from .evidence import collect_cloud_evidence
 from ..providers.openai_compatible import CloudConfig, make_cloud_session
 from ..sandbox import SandboxMode, profile_for_mode
 from ..telemetry.outcome import record_agent_outcome
@@ -51,7 +52,7 @@ def execute_with_escalation(
     max_steps: int = 6,
     routing_mode: str = "balanced",
     permission_controller=None,
-    sandbox_mode: str | SandboxMode = SandboxMode.WORKSPACE_WRITE,
+    sandbox_mode: str | SandboxMode = SandboxMode.WORKSPACE_NETWORK,
     event_bus=None,
     additional_context: str | None = None,
     steering_queue=None,
@@ -163,14 +164,44 @@ def execute_with_escalation(
         closer = getattr(local_session, "close", None)
         if callable(closer):
             closer()  # free local model memory before cloud escalation
+    # Collect bounded context on the local computer before any paid network
+    # request. The cloud model receives a targeted evidence pack rather than
+    # a raw repository inventory. Cloud still uses normal tool calls to reread
+    # exact source when necessary.
+    if progress is not None:
+        progress("[Router] Collecting relevant repository evidence locally before cloud request.")
+    handoff = _escalation_packet(local)
+    try:
+        evidence = collect_cloud_evidence(
+            repo_path,
+            task,
+            context_limit=config.context_limit,
+            local_failure=handoff,
+            prior_session=additional_context or "",
+        )
+    except Exception as exc:
+        local["cloud_escalation"] = {
+            "attempted": False,
+            "reason": "evidence_collection_failed",
+            "failure_type": type(exc).__name__,
+        }
+        if progress is not None:
+            progress("[Router] Cloud preparation stopped: local evidence collection failed.")
+        return local
+    if not evidence.text.strip() or not evidence.sections:
+        local["cloud_escalation"] = {
+            "attempted": False,
+            "reason": "insufficient_local_evidence",
+        }
+        return local
+    combined_context = evidence.text
+    local["cloud_evidence"] = {
+        "estimated_tokens": evidence.tokens,
+        "sections": list(evidence.sections),
+        "redactions": evidence.redactions,
+    }
     cloud_session = make_cloud_session(config)
     cloud_engine = AgentEngine(model_key=engine.model_key)
-    handoff = _escalation_packet(local)
-    combined_context = "\n\n".join(
-        value
-        for value in (additional_context, handoff)
-        if value and value.strip()
-    )
 
     if progress is not None:
         progress(

@@ -12,7 +12,7 @@ from ..models.profiles import MODEL_PROFILES
 # environment variables, paths, prompts, source code, or model responses.
 STATES = {
     "passed", "passed_prompt_only", "prompt_failed", "prompt_mismatch",
-    "agent_failed", "agent_probe_failed", "skipped_hardware",
+    "agent_failed", "agent_probe_failed", "interrupted", "skipped_hardware",
     "model_not_installed", "runtime_unhealthy",
 }
 ALLOWED_KEYS = {

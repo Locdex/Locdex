@@ -104,3 +104,9 @@ A model timeout is converted to a failed local attempt after the hardened change
 ## Publishing real benchmark results
 
 A single calculator qualification probe is not a robust benchmark. The public repository includes a safe exporter for qualification records and `benchmarks/README.md` with rules for methodology, controlled tasks, multiple seeds, failure reporting and eventual Hugging Face distribution. Do not treat anonymized production routing telemetry as comparative benchmark scores.
+
+## Local aggregation before cloud fallback
+
+An escalation first builds a `LOCDEX CLOUD EVIDENCE PACK` locally, from a bounded, secret-redacted `ContextCompiler` retrieval pass and local attempt metadata. The packet prioritizes relevant source, a retrieval plan, dependency graph context and concise workspace metadata, with token budgeting based on configured cloud context capacity. Local aggregation is not a separate model/API call. It reduces redundant initial context and prevents full-repository dumps; cloud messages can still transmit selected source excerpts and task details. Network sandbox capability defaults on for new sessions, but provider selection, credentials, cloud enablement, and permission enforcement remain separate.
+
+Qualification does **not** use cloud fallback. Both prompt and agent probes use an isolated local model subprocess; timeouts and interruption are reported as ordinary failed/interrupted qualification records.

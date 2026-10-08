@@ -44,7 +44,7 @@ class SessionState:
     repo_path: str
     model: str
     permission_mode: str = "ask"
-    sandbox_mode: str = "workspace-write"
+    sandbox_mode: str = "workspace-network"
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
     tasks: list[SessionTask] = field(default_factory=list)
@@ -59,7 +59,7 @@ class SessionState:
         repo_path: str,
         model: str,
         permission_mode: str = "ask",
-        sandbox_mode: str = "workspace-write",
+        sandbox_mode: str = "workspace-network",
     ) -> "SessionState":
         return cls(
             session_id=uuid.uuid4().hex[:12],
@@ -126,7 +126,7 @@ class SessionState:
             repo_path=str(data["repo_path"]),
             model=str(data["model"]),
             permission_mode=str(data.get("permission_mode", "ask")),
-            sandbox_mode=str(data.get("sandbox_mode", "workspace-write")),
+            sandbox_mode=str(data.get("sandbox_mode", "workspace-network")),
             created_at=str(data.get("created_at", _now())),
             updated_at=str(data.get("updated_at", _now())),
             tasks=tasks,

@@ -24,6 +24,24 @@ def _model_process(connection: Connection, model_key: str) -> None:
             request = connection.recv()
             if request is None:
                 break
+            if isinstance(request, dict) and request.get("kind") == "prompt":
+                try:
+                    started = time.monotonic()
+                    messages = [{"role": "user", "content": str(request["prompt"])}]
+                    answer = session.chat(
+                        messages,
+                        max_tokens=int(request.get("max_tokens", 32)),
+                        temperature=0.0,
+                    )
+                    connection.send(("prompt", {
+                        "text": answer["text"],
+                        "usage": answer.get("usage"),
+                        "backend": session.plan.backend,
+                        "seconds": time.monotonic() - started,
+                    }))
+                except Exception as exc:
+                    connection.send(("error", f"{type(exc).__name__}: {str(exc)[:300]}"))
+                continue
             messages, schema, options = request
             try:
                 started = time.monotonic()
@@ -209,6 +227,52 @@ class IsolatedLlamaCppSession:
             except (TypeError, ValueError, OverflowError):
                 pass
         return payload["result"]
+
+    def __enter__(self) -> "IsolatedLlamaCppSession":
+        return self
+
+    def __exit__(self, _type: Any, _value: Any, _traceback: Any) -> None:
+        self.close()
+
+    def prompt_completion(self, prompt: str, *, max_tokens: int = 32) -> dict:
+        """Run qualification's plain-text prompt in the same killable child."""
+        if self._closed:
+            raise RuntimeExecutionError("Local inference session has already been closed.")
+        budget = (
+            estimate_inference_timeout(
+                self.model_key,
+                hardware=self.hardware,
+                max_tokens=max_tokens,
+                prompt_tokens=len(prompt) // 4,
+                prefer_cloud_fallback=False,
+            )
+            if self._explicit_timeout is None else None
+        )
+        load_limit = self._explicit_timeout if budget is None else budget.load_seconds
+        generation_limit = self._explicit_timeout if budget is None else budget.generate_seconds
+        self.timeout_seconds = load_limit
+        self._ensure_started()
+        assert self._parent is not None
+        if not getattr(self, "_ready", False):
+            self._announce(f"[Inference] Loading {self.model_key}; deadline {load_limit:g}s")
+            kind, payload = self._receive(
+                time.monotonic() + load_limit, "loading model"
+            )
+            if kind != "ready":
+                self.close()
+                raise RuntimeExecutionError(str(payload)[:350])
+            self._ready = True
+        self.timeout_seconds = generation_limit
+        self._announce(f"[Inference] Checking model prompt; deadline {generation_limit:g}s")
+        self._parent.send({
+            "kind": "prompt", "prompt": prompt, "max_tokens": max_tokens,
+        })
+        kind, payload = self._receive(
+            time.monotonic() + generation_limit, "generating"
+        )
+        if kind != "prompt" or not isinstance(payload, dict):
+            raise RuntimeExecutionError(str(payload)[:350])
+        return payload
 
     def close(self) -> None:
         if self._closed:

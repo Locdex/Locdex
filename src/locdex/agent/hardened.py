@@ -585,7 +585,7 @@ class AgentEngine(BaseAgentEngine):
         progress=None,
         write_scope: list[str] | None = None,
         permission_controller: PermissionController | None = None,
-        sandbox_mode: str | SandboxMode = SandboxMode.WORKSPACE_WRITE,
+        sandbox_mode: str | SandboxMode = SandboxMode.WORKSPACE_NETWORK,
         event_bus: EventBus | None = None,
         additional_context: str | None = None,
         steering_queue: Any | None = None,
