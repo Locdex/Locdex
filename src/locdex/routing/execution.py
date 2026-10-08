@@ -159,6 +159,10 @@ def execute_with_escalation(
         }
         return local
 
+    if local_session is not None:
+        closer = getattr(local_session, "close", None)
+        if callable(closer):
+            closer()  # free local model memory before cloud escalation
     cloud_session = OpenAICompatibleSession(config)
     cloud_engine = AgentEngine(model_key=engine.model_key)
     handoff = _escalation_packet(local)
@@ -200,6 +204,12 @@ def execute_with_escalation(
         if progress is not None:
             progress("[Router] Cloud fallback failed; returning local failure.")
         return local
+    if cloud.get("status") == "completed":
+        # Interactive checkpoint/undo must use the journal that actually
+        # produced the edits, not the rolled-back local attempt's journal.
+        journal = getattr(cloud_engine, "change_journal", None)
+        if journal is not None:
+            engine.change_journal = journal
     cloud["route"] = "cloud"
     cloud["cloud_provider"] = config.provider
     cloud["cloud_model"] = config.model
