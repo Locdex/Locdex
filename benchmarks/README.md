@@ -1,41 +1,50 @@
-# Locdex Benchmarks & Qualification Results
+# Locdex Benchmark and Qualification Protocol
 
-This is the public, reproducible landing page for Locdex's evaluation work.
+## Scope
 
-**No benchmark claims are implied until real runs and full protocols are published.**
+The `benchmarks/` directory contains versioned evaluation protocols and reviewed public results for the Locdex coding-agent runtime. Qualification probes and comparative benchmarks are separate evaluation categories.
 
-## Where to publish
+**Qualification v1** is an installation/runtime acceptance check consisting of a fixed-output prompt and one bounded calculator-repair task. It measures whether a model/runtime can respond, invoke tools, preserve tests, and complete verification on a small fixture. It does not establish coding ability across languages, repositories, or task families. No aggregate performance claims follow from this probe.
 
-1. **Canonical repository:** reviewed, versioned results go into `benchmarks/results/` on GitHub, with the tool version, exact model revision/quantization, workload, hardware tier, settings, timestamp, verified pass/fail outcome and any excluded runs in the accompanying experiment report.
-2. **Reproducible datasets:** use a Hugging Face *dataset* repository under an official Locdex organization/account after the test cases and their licenses are ready. Dataset version/hash and evaluation code revision must be linked.
-3. **Readable results:** make a website `/benchmarks` page backed by the reviewed datasets. Don't use it as the canonical raw evidence. Share release-level changelogs or technical articles linking the source.
-4. **Independent comparisons:** only submit compatible scores to third-party leaderboards under their actual methodology; do not present Locdex's calculator check as a SWE-bench result.
+**LocdexBench** is the planned broader evaluation suite. Benchmarks must be versioned, reproducible, and auditable before scores are published.
 
-## What is implemented now
+## Repository layout
 
-The current command, `locdex model qualify <key>`, tests a deterministic prompt and optionally one simple calculator fix. Its output is a **qualification probe**, not LocdexBench. In particular, there is no statistically meaningful model ranking yet. The original private report can contain operating system details, paths and full diagnostics, so don't push it directly.
+- `results/` — reviewed, schema-validated public qualification records and future benchmark outputs
+- `src/locdex/benchmark/publish.py` — strict privacy-preserving qualification export and public-record validation
+- `tests/` — regression tests for qualification and benchmark reporting
 
-Export only sanitized public fields:
+Private qualification reports are written to the local Locdex application cache. They can include paths, system details, and diagnostic output and must not be committed directly.
+
+## Reproducing a qualification run
+
+Requires an installed local model and a healthy llama.cpp runtime.
 
 ```powershell
 locdex model qualify smoke --max-steps 8
-# Copy the report_path from its JSON output, then:
-locdex benchmark export --input "C:\path\to\private\qualification.json" --output "benchmarks/results/smoke-001.json"
+locdex benchmark export --input "PATH_TO_PRIVATE_REPORT" --output "benchmarks/results/smoke-001.json"
 locdex benchmark summary --dir benchmarks/results
 ```
 
-Public exports include the suite identifier `locdex-qualification-v1`, model key, broad hardware tier, backend, status, timing and pass/fail indicators. Code, prompts, model text, raw hardware IDs and local filesystem paths are excluded. This is deliberately a *lossy* export. Before publishing, verify accuracy and add a public run-method note identifying the exact model artifact and model version/quantization without publishing private credentials or file paths.
+The export schema is `locdex-qualification-v1`. Exported fields are limited to model profile, broad hardware tier, runtime backend, elapsed time, step count, verification results, test preservation, and probe pass/fail outcomes. Raw code, prompts, responses, repository paths, machine identifiers, and credentials are excluded.
 
-## Required work before LocdexBench v1
+Qualification results may be published only after verifying the record against its source run and reporting failures as well as successes.
 
-- Establish a versioned, legally redistributable task suite with multiple languages and varied repository sizes; publish unmodified starting repositories, tests, grading scripts and task IDs.
-- Run each model on consistent hardware and settings (or explicitly normalize and disclose limitations); record inference backend, quantization, context, step cap, tokens, costs, retries and timeouts.
-- Use repeated trials / seeds for stochastic models. Publish success/failure totals, pass@1, verification success, wall-clock time, token/compute cost, denied-tool frequency and rollback results.
-- Distinguish **local-only**, **cloud-only**, and **local → cloud** runs; count cloud handoffs/costs rather than crediting fallback successes to the local model.
-- Version all run artifacts and report both median and distributional results (not just best runs). Preserve negative outcomes.
-- Separate **user telemetry** from independent evaluation. Anonymous usage events alone can't establish comparative success rates or retained performance improvements.
-- Do not publish API keys, original private repositories, proprietary code, user prompts or filesystem paths.
+## Requirements for comparative results
 
-## Release process
+Each benchmark release must identify:
 
-Review generated `benchmarks/results/*.json` before merging; CI validates their strict schema. Once a sufficiently broad benchmark is built, publish a methodology, results CSV/JSON, scripts, seeds, and a signed release tag. The public GitHub repository remains the primary source; Hugging Face and a website are downstream mirrors. No real benchmark scores are included in this repository yet.
+1. Suite version, task set, fixture checksums, permitted licenses, starting repository states, grader scripts, and evaluation source revision
+2. Exact model and quantization, sampling parameters, inference backend, context constraints, tool permissions, step ceilings, and timeout policy
+3. Hardware class, RAM/VRAM availability, concurrency, and cost assumptions
+4. Repeated trials where relevant, complete attempt counts, failures, exclusions, and statistical uncertainty
+5. Verification outcome, task success, wall-clock time, token usage, estimated API cost, and rollback/cancellation behavior
+6. Routing category: local-only, cloud-only, or local-to-cloud. Cloud completions must not be credited to local-model-only performance
+
+Production telemetry provides observational routing data; it is not a substitute for controlled paired benchmarking.
+
+## Publication
+
+GitHub remains the canonical versioned source for evaluation code, methodology, and reviewed result artifacts. Approved redistributable task datasets may be mirrored to a versioned Hugging Face dataset repository. A website leaderboard may visualize these records after the methodology and source data are publicly available.
+
+Public artifacts must be inspected for proprietary code, credentials, paths, model-response excerpts, and other unintended disclosures before publication. The benchmark CI workflow validates the public result schema.
