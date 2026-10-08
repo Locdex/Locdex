@@ -125,9 +125,9 @@ def test_npm_python_version_pin_matches_project_metadata():
     project = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     installer = (NPM / "scripts" / "install.js").read_text(encoding="utf-8")
     package = json.loads((NPM / "package.json").read_text(encoding="utf-8"))
-    project_version = re.search(r'(?m)^version\\s*=\\s*"([^"]+)"', project)
+    project_version = re.search(r'(?m)^version\s*=\s*"([^"]+)"', project)
     assert project_version is not None
     assert f'locdex=={project_version.group(1)}' in installer
-    parts = re.fullmatch(r"(\\d+)\\.(\\d+)\\.(\\d+)-alpha\\.(\\d+)", package["version"])
+    parts = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)-alpha\.(\d+)", package["version"])
     assert parts is not None
     assert project_version.group(1) == f"{parts[1]}.{parts[2]}.{parts[3]}a{parts[4]}"
