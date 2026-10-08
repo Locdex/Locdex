@@ -97,12 +97,16 @@ def record_generation_speed(
     data = _read_samples()
     old = observed_speed(model_key, backend)
     smooth = rate if old is None else 0.7 * old + 0.3 * rate
-    data[_key(model_key, backend)] = {
+    row = dict(data.get(_key(model_key, backend), {}))
+    row.update({
         "tokens_per_second": round(smooth, 3),
-        "observations": min(
-            10000, int(data.get(_key(model_key, backend), {}).get("observations", 0)) + 1
-        ),
-    }
+        "observations": min(10000, int(row.get("observations", 0)) + 1),
+    })
+    data[_key(model_key, backend)] = row
+    return _save_samples(data)
+
+
+def _save_samples(data: dict) -> bool:
     try:
         path = _cache_path()
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -112,6 +116,50 @@ def record_generation_speed(
     except OSError:
         return False
     return True
+
+
+def record_inference_timeout(
+    model_key: str,
+    backend: str,
+    *,
+    phase: str,
+    seconds: float,
+) -> bool:
+    """Raise a bounded *local-only* phase floor after a real hard timeout.
+
+    Do not treat a timeout as a throughput observation. This prevents repeated
+    first-use underestimates on a slow machine without faking tokens/sec.
+    """
+    if phase not in {"loading", "generating"} or not math.isfinite(seconds) or seconds <= 0:
+        return False
+    field = "load_timeout_floor" if phase == "loading" else "generate_timeout_floor"
+    maximum = 210.0 if phase == "loading" else 360.0
+    row_key = _key(model_key, backend)
+    data = _read_samples()
+    row = dict(data.get(row_key, {}))
+    previous = row.get(field, 0)
+    try:
+        previous = float(previous)
+    except (ValueError, TypeError):
+        previous = 0
+    row[field] = round(_clamp(max(previous, seconds * 1.65), 0, maximum), 1)
+    data[row_key] = row
+    return _save_samples(data)
+
+
+def _timeout_floor(model_key: str, backend: str, phase: str) -> float:
+    row = _read_samples().get(_key(model_key, backend), {})
+    if not isinstance(row, dict):
+        return 0.0
+    value = row.get(
+        "load_timeout_floor" if phase == "loading" else "generate_timeout_floor",
+        0,
+    )
+    try:
+        number = float(value)
+        return number if math.isfinite(number) and 0 <= number <= 360 else 0.0
+    except (ValueError, TypeError):
+        return 0.0
 
 
 def estimate_inference_timeout(
@@ -146,18 +194,42 @@ def estimate_inference_timeout(
     measured = observed_speed(model_key, backend)
     # Avoid a single unusually fast sample causing premature timeouts.
     speed = theoretical_speed if measured is None else min(theoretical_speed * 2.0, measured)
+    low_cpu = not gpu and cores <= 2
+    tight_memory = (
+        hw.available_ram_gb is not None
+        and hw.available_ram_gb < max(3.0, size * 1.6)
+    )
     memory_pressure = (
-        1.5
-        if hw.available_ram_gb is not None and hw.available_ram_gb < size * (1.15 if gpu else 1.4)
+        1.65 if tight_memory else
+        1.3 if hw.available_ram_gb is not None and hw.available_ram_gb < size * 2.0
         else 1.0
     )
-    load = _clamp(18 + size * (1.5 if gpu else 5.0) * memory_pressure, 35, 210)
+    # Laptop-class dual-core CPUs spend substantial time evaluating prompts
+    # and initializing their first native inference call. A 35s floor yields
+    # false failures even for the 1.5B smoke model; budget conservatively
+    # until measured rates become available.
+    load_floor = 70 if low_cpu and tight_memory else 50 if low_cpu else 35
+    generation_floor = (
+        115 if low_cpu and tight_memory and measured is None else
+        90 if low_cpu and measured is None else 35
+    )
+    load = _clamp(
+        max(
+            load_floor,
+            18 + size * (1.5 if gpu else 5.0) * memory_pressure,
+            _timeout_floor(model_key, backend, "loading"),
+        ),
+        35, 210,
+    )
     tokens = max(1, min(8192, int(max_tokens)))
     prompt = max(0, min(65536, int(prompt_tokens)))
     generate = _clamp(
-        16 + ((tokens * 1.35 + prompt / 10) / speed) * memory_pressure,
-        35,
-        360,
+        max(
+            generation_floor,
+            16 + ((tokens * 1.35 + prompt / 10) / speed) * memory_pressure,
+            _timeout_floor(model_key, backend, "generating"),
+        ),
+        35, 360,
     )
 
     if prefer_cloud_fallback:

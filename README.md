@@ -592,3 +592,17 @@ When local execution needs a configured cloud fallback, Locdex assembles a compa
 ## Bounded qualification
 
 `locdex model qualify <model>` now runs **both** its prompt probe and the optional coding-agent probe through a reusable, isolated, killable local inference process. Each model load/generation call has an adaptive deadline. A timeout records a failed probe instead of freezing inside native llama.cpp; Ctrl+C records an `interrupted` report. Qualification is local-only, independent of the globally network-capable sandbox default, and does not silently route the test to cloud.
+
+
+### Slow CPU calibration for local qualification
+
+On low-memory, 1–2-physical-core CPU machines, a 35-second cold generation budget may stop a functioning model prematurely. Locdex now estimates more conservative **separate** load and generation deadlines for such machines and records locally observed timeout floors per model/backend/phase. The next automatic deadline can increase after a real timeout; explicit user overrides still take precedence. Native inference remains killable and maximum budgets remain bounded.
+
+The model qualification probe uses a local model only; a timeout is reported as a failed probe, not a valid benchmark success. Previous exported qualification records remain separate and should not be overwritten when retrying.
+
+```powershell
+locdex inference budget --model smoke --max-tokens 32 --prompt-tokens 10
+locdex model qualify smoke --prompt-only
+```
+
+For particularly slow hardware, users can choose an explicit per-phase ceiling for the current PowerShell session, e.g. `$env:LOCDEX_INFERENCE_TIMEOUT_SECONDS = "180"`. Increasing a deadline is not a substitute for measuring actual model completion quality.

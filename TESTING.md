@@ -90,3 +90,8 @@ Unit tests cover event-driven activity text, missing/stale model activity, tool 
 ## Qualification timeout and evidence-first cloud coverage
 
 The qualification tests verify that model prompt and agent probes share a killable isolated subprocess and return `agent_failed` on local timeout or `interrupted` on Ctrl+C. The network-default tests enforce new-session and CLI sandbox defaults while retaining explicit network-off modes. Cloud evidence tests verify deterministic local collection, bounded payloads, and basic secret redaction prior to cloud escalation.
+
+
+### Adaptive budgets on constrained CPUs
+
+The test suite verifies that a low-memory Windows CPU with two physical cores receives a more realistic initial load/generation deadline; a hard timeout adjusts only the failed phase in a **local-only** cache, and successful speed measurements preserve prior timeout floors. Cancelled inference is not counted as a timeout. Explicit `LOCDEX_INFERENCE_TIMEOUT_SECONDS` overrides all automatic estimates. Native runtime speed on actual hardware still requires manual qualification.

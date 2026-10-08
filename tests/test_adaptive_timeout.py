@@ -9,6 +9,7 @@ from locdex.runtime.timeout_policy import (
     estimate_inference_timeout,
     observed_speed,
     record_generation_speed,
+    record_inference_timeout,
 )
 
 
@@ -83,3 +84,72 @@ def test_invalid_override_does_not_crash(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCDEX_INFERENCE_TIMEOUT_SECONDS", "not-a-number")
     budget = estimate_inference_timeout("smoke", hardware=cpu())
     assert budget.source == "model_and_hardware_estimate"
+
+
+def test_constrained_dual_core_cpu_has_realistic_cold_probe_budget(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCDEX_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("LOCDEX_INFERENCE_TIMEOUT_SECONDS", raising=False)
+    # Matches the reporting user's CPU class and available memory.
+    slow_laptop = HardwareProfile(
+        system="Windows",
+        machine="AMD64",
+        cpu_count=4,
+        total_ram_gb=7.72,
+        available_ram_gb=2.06,
+        backend="cpu",
+        physical_cpu_count=2,
+    )
+    budget = estimate_inference_timeout(
+        "smoke", hardware=slow_laptop, max_tokens=32, prompt_tokens=10,
+    )
+    assert 70 <= budget.load_seconds <= 210
+    assert 115 <= budget.generate_seconds <= 360
+    assert budget.source == "model_and_hardware_estimate"
+    assert budget.backend == "cpu"
+
+
+def test_hard_timeout_increases_next_local_budget_without_inventing_speed(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCDEX_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("LOCDEX_INFERENCE_TIMEOUT_SECONDS", raising=False)
+    before = estimate_inference_timeout(
+        "smoke", hardware=cpu(), max_tokens=16,
+    )
+    assert record_inference_timeout(
+        "smoke", "cpu", phase="generating", seconds=65,
+    )
+    after = estimate_inference_timeout(
+        "smoke", hardware=cpu(), max_tokens=16,
+    )
+    assert after.generate_seconds >= 107
+    assert after.generate_seconds > before.generate_seconds
+    assert observed_speed("smoke", "cpu") is None
+    assert after.source == "model_and_hardware_estimate"
+
+
+def test_loading_timeout_calibrates_independently_and_survives_success(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCDEX_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("LOCDEX_INFERENCE_TIMEOUT_SECONDS", raising=False)
+    assert record_inference_timeout(
+        "smoke", "cpu", phase="loading", seconds=80,
+    )
+    assert record_generation_speed(
+        "smoke", "cpu", seconds=64, output_tokens=64,
+    )
+    next_budget = estimate_inference_timeout("smoke", hardware=cpu())
+    assert next_budget.load_seconds >= 132
+    assert next_budget.source == "measured_speed"
+    raw = json.loads((tmp_path / "inference" / "speed-v1.json").read_text())
+    assert raw["smoke:cpu"]["load_timeout_floor"] >= 132
+    assert "tokens_per_second" in raw["smoke:cpu"]
+
+
+def test_override_remains_authoritative_after_timeout_history(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCDEX_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("LOCDEX_INFERENCE_TIMEOUT_SECONDS", raising=False)
+    assert record_inference_timeout(
+        "smoke", "cpu", phase="generating", seconds=100,
+    )
+    monkeypatch.setenv("LOCDEX_INFERENCE_TIMEOUT_SECONDS", "50")
+    budget = estimate_inference_timeout("smoke", hardware=cpu())
+    assert budget.generate_seconds == 50
+    assert budget.load_seconds == 50

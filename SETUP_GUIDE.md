@@ -159,3 +159,22 @@ New sessions default to `workspace-network`; network is available only through t
 Before the first cloud fallback request, Locdex assembles a bounded, locally generated evidence pack from relevant source, dependency context and failure diagnostics. The cloud agent avoids repeated broad repository context in its initial prompt. API execution is only attempted after that local work completes, and only when cloud credentials are configured.
 
 `locdex model qualify smoke --max-steps 8` uses isolated model inference for both probe phases. A model timeout is recorded as a failed qualification, and Ctrl+C produces an interrupted report rather than a native inference stack trace. Run `locdex inference budget --model smoke` to inspect the local deadline estimate.
+
+
+### CPU-only qualification on low-memory laptops
+
+A cold inference call on a dual-core Windows CPU with limited available RAM may need substantially more than 35 seconds even for a 1.5B Q4 model. The automatic timeout policy applies slower-hardware minimums and maintains a local-only history of genuinely timed-out phases to avoid repeatedly selecting an insufficient deadline.
+
+```powershell
+locdex inference budget --model smoke --max-tokens 32 --prompt-tokens 10
+locdex model qualify smoke --prompt-only
+```
+
+If repeated timeouts occur, a manual override can be used for a controlled experiment:
+```powershell
+$env:LOCDEX_INFERENCE_TIMEOUT_SECONDS = "180"
+locdex model qualify smoke --prompt-only
+Remove-Item Env:LOCDEX_INFERENCE_TIMEOUT_SECONDS -ErrorAction SilentlyContinue
+```
+
+A prompt failure is not a claim about coding-agent performance. `benchmarks/results/` may contain results from older runs; those should remain unchanged and be labeled independently.

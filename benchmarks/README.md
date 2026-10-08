@@ -48,3 +48,8 @@ Production telemetry provides observational routing data; it is not a substitute
 GitHub remains the canonical versioned source for evaluation code, methodology, and reviewed result artifacts. Approved redistributable task datasets may be mirrored to a versioned Hugging Face dataset repository. A website leaderboard may visualize these records after the methodology and source data are publicly available.
 
 Public artifacts must be inspected for proprietary code, credentials, paths, model-response excerpts, and other unintended disclosures before publication. The benchmark CI workflow validates the public result schema.
+
+
+## Slow-hardware qualification caveat
+
+Qualification is not a timed benchmark of model quality when a run exhausts its inference budget. The timeout policy estimates separate load and generation deadlines from hardware, model size, context and local performance observations. Initial runs on older CPU-only systems may have longer cold-start deadlines and can still time out. A timed-out prompt check is recorded as `prompt_failed`, with the agent probe unattempted. Do not combine such runs with a previously recorded `agent_probe_failed` attempt or infer comparative coding quality from a single timeout.

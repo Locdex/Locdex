@@ -10,6 +10,7 @@ from .llama_cpp import LlamaCppSession, RuntimeExecutionError
 from .timeout_policy import (
     estimate_inference_timeout,
     record_generation_speed,
+    record_inference_timeout,
 )
 from .hardware import detect_hardware
 
@@ -98,6 +99,7 @@ class IsolatedLlamaCppSession:
         self._parent: Connection | None = None
         self._process: multiprocessing.Process | None = None
         self._closed = False
+        self._calibration_backend: str | None = None
 
     def _announce(self, text: str) -> None:
         if self.progress is not None:
@@ -134,6 +136,19 @@ class IsolatedLlamaCppSession:
                 raise RuntimeExecutionError("Local inference cancelled; model process stopped.")
             now = time.monotonic()
             if now >= deadline:
+                if self._calibration_backend is not None:
+                    # A timeout is a lower bound, not a measured token rate.
+                    # Persist it locally so the next run doesn't use the same
+                    # unrealistically short deadline on this machine.
+                    try:
+                        record_inference_timeout(
+                            self.model_key,
+                            self._calibration_backend,
+                            phase=phase,
+                            seconds=self.timeout_seconds,
+                        )
+                    except (OSError, ValueError):
+                        pass
                 self.close()
                 raise RuntimeExecutionError(
                     f"Local inference {phase} timed out after {self.timeout_seconds:g}s; "
@@ -173,6 +188,7 @@ class IsolatedLlamaCppSession:
             if self._explicit_timeout is None
             else None
         )
+        self._calibration_backend = budget.backend if budget is not None else None
         load_limit = (
             self._explicit_timeout if budget is None else budget.load_seconds
         )
@@ -248,6 +264,7 @@ class IsolatedLlamaCppSession:
             )
             if self._explicit_timeout is None else None
         )
+        self._calibration_backend = budget.backend if budget is not None else None
         load_limit = self._explicit_timeout if budget is None else budget.load_seconds
         generation_limit = self._explicit_timeout if budget is None else budget.generate_seconds
         self.timeout_seconds = load_limit

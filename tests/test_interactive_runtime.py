@@ -102,3 +102,33 @@ def test_live_header_contains_permission_and_controls_above_input():
     assert "[n] Deny" in source
     assert "local_session=local_session" in source
     assert "local_session.close()" in source
+
+
+def test_hard_timeout_records_phase_floor_but_user_cancel_does_not(monkeypatch):
+    import locdex.runtime.isolated as isolated
+
+    recorded = []
+    monkeypatch.setattr(
+        isolated,
+        "record_inference_timeout",
+        lambda model, backend, **kwargs: recorded.append(
+            (model, backend, kwargs["phase"], kwargs["seconds"])
+        ),
+    )
+    session = IsolatedLlamaCppSession(model_key="smoke", timeout_seconds=0.03)
+    session._calibration_backend = "cpu"
+    session._parent = _SlowPipe()
+    session._process = _DummyProcess()
+    with pytest.raises(RuntimeExecutionError, match="timed out"):
+        session._receive(time.monotonic() + 0.03, "generating")
+    assert recorded == [("smoke", "cpu", "generating", 0.03)]
+
+    session = IsolatedLlamaCppSession(
+        model_key="smoke", timeout_seconds=1, cancelled=lambda: True,
+    )
+    session._calibration_backend = "cpu"
+    session._parent = _SlowPipe()
+    session._process = _DummyProcess()
+    with pytest.raises(RuntimeExecutionError, match="cancelled"):
+        session._receive(time.monotonic() + 1, "generating")
+    assert len(recorded) == 1
