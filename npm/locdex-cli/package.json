@@ -1,6 +1,6 @@
 {
   "name": "@locdex/cli",
-  "version": "0.3.2-alpha.1",
+  "version": "0.3.3-alpha.1",
   "description": "npm bootstrapper and launcher for the Locdex local-first coding-agent runtime",
   "license": "MIT",
   "bin": {
@@ -25,5 +25,17 @@
     "qwen",
     "llama-cpp",
     "ai-coding"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Locdex/Locdex.git",
+    "directory": "npm/locdex-cli"
+  },
+  "homepage": "https://github.com/Locdex/Locdex#readme",
+  "bugs": {
+    "url": "https://github.com/Locdex/Locdex/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }
