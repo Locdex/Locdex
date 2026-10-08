@@ -12,6 +12,7 @@ from ..routing.task_profile import profile_task
 from ..runtime import detect_hardware
 from .events import build_routing_event
 from .queue import enqueue
+from .client import flush
 from .settings import enabled
 
 
@@ -128,4 +129,7 @@ def record_agent_outcome(
         **flags,
     )
     enqueue(event.to_dict())
+    # Network failures never fail an agent task; queued events are retried.
+    # No endpoint => no request, even when BASIC is enabled by default.
+    flush(batch_size=25, timeout=1.5)
     return True

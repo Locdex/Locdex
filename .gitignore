@@ -11,3 +11,9 @@ build/
 *.egg-info/
 .env
 *.gguf
+
+# Cloudflare Workers local build and credentials
+node_modules/
+.wrangler/
+.dev.vars
+.dev.vars.*

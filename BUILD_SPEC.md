@@ -50,7 +50,7 @@ Routing SHOULD remain session-aware; switching should occur at meaningful bounda
 
 ## Telemetry
 
-Shared telemetry MUST be OFF by default.
+BASIC routing-outcome telemetry MAY be enabled by default for release builds only if the first-run disclosure is prominent, immediate opt-out is available, no endpoint means no upload, and no raw content or persistent user/install identifier is transmitted. RESEARCH MUST remain explicit opt-in.
 
 BASIC telemetry MUST use an exact allow-list schema and MUST reject unknown fields.
 

@@ -28,7 +28,7 @@ BASIC telemetry may contain task taxonomy/features, model/quant/backend buckets,
 
 It must not contain source code, prompts, model responses, file names/paths, repository/branch identity, environment variables, API keys/secrets, company/user identity, or persistent installation/device identifiers.
 
-Events queue locally and upload only if telemetry is enabled and an endpoint is configured.
+BASIC telemetry is enabled by default with visible first-use notice and one-command opt-out. Events queue locally and upload automatically after tasks only when a valid HTTPS endpoint is configured. `locdex telemetry disable` clears unsent events; RESEARCH still requires separate opt-in.
 
 ## Data sources for router releases
 
@@ -42,7 +42,7 @@ This prevents the router from merely learning its own previous selection policy.
 
 ## Backend separation
 
-The public repo contains the client schema, sanitizer, queue, router and artifact runtime. Cloudflare ingestion, R2/Analytics Engine storage, dataset processing and router training live in the private infrastructure repository.
+The public repo now includes an auditable, open-source Cloudflare Worker starter under `infra/telemetry-worker/`. It provides a write-only `POST /v1/events` endpoint, strict v1 validation, Cloudflare rate limiting, R2 canonical sanitized batches, and Analytics Engine projections. No Cloudflare account secret or admin token is stored in the client or Git repository. Private operational infrastructure and training pipelines stay outside the public repo. The Worker must be deployed to a real account and its resulting HTTPS URL configured before launch clients can upload.
 
 ## Commands
 

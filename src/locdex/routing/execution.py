@@ -8,6 +8,14 @@ from ..sandbox import SandboxMode, profile_for_mode
 from ..telemetry.outcome import record_agent_outcome
 
 
+def _safe_record_outcome(**kwargs: Any) -> None:
+    # Telemetry is best-effort and must not change execution behavior.
+    try:
+        record_agent_outcome(**kwargs)
+    except Exception:
+        pass
+
+
 def _escalation_packet(result: dict[str, Any]) -> str:
     verification = result.get("verification") or {}
     attempted = result.get("attempted_files_modified") or result.get("files_modified") or []
@@ -65,7 +73,7 @@ def execute_with_escalation(
     local["route"] = "local"
     local["escalation_reason"] = None
 
-    record_agent_outcome(
+    _safe_record_outcome(
         task=task,
         repo_path=repo_path,
         result=local,
@@ -146,7 +154,7 @@ def execute_with_escalation(
         "reason": str(local.get("status") or "local_failure"),
     }
 
-    record_agent_outcome(
+    _safe_record_outcome(
         task=task,
         repo_path=repo_path,
         result=cloud,

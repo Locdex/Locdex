@@ -376,12 +376,14 @@ locdex route --task "fix the failing refresh-token test" --repo .
 locdex router status
 ```
 
-Shared routing telemetry is **off by default**. BASIC telemetry contains sanitized task/model/outcome features and excludes raw prompts, code, diffs, filenames/paths, repository identity, model responses, credentials, and persistent user/install identity.
+BASIC routing telemetry is **on by default**, with a visible first-run notice and an immediate opt-out: `locdex telemetry disable` (which also clears pending events). It contains strictly allow-listed task/model/outcome features and excludes prompts, code, diffs, paths, repository identity, responses, secrets and persistent installation IDs. No network request is made until you configure a real HTTPS endpoint. When configured, Locdex attempts to upload a small batch after each task; failures do not interrupt coding. RESEARCH telemetry remains separately opt-in.
 
 ```bash
 locdex telemetry status
 locdex telemetry preview
 locdex telemetry enable
+locdex telemetry disable
+locdex telemetry endpoint https://YOUR-DEPLOYED-WORKER.workers.dev/v1/events
 locdex telemetry flush
 ```
 

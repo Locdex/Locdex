@@ -48,6 +48,7 @@ from ..telemetry import enabled as telemetry_enabled
 from ..telemetry import endpoint as telemetry_endpoint
 from ..telemetry import flush as telemetry_flush
 from ..telemetry import mode as telemetry_mode
+from ..telemetry.settings import notice_once as telemetry_notice_once
 from ..telemetry import peek as telemetry_peek
 from ..telemetry import set_endpoint as telemetry_set_endpoint
 from ..telemetry import set_mode as telemetry_set_mode
@@ -252,9 +253,11 @@ def cli(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     if args.command is None:
+        telemetry_notice_once()
         return run_interactive(".")
 
     if args.command == "resume":
+        telemetry_notice_once()
         return run_interactive(args.repo, resume_id=args.session_id)
 
     if args.command == "steer":
@@ -404,6 +407,8 @@ def cli(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "task":
+        if not args.json_output:
+            telemetry_notice_once()
         if args.json_output and args.permission_mode == PermissionMode.ASK.value:
             print(
                 "Locdex permission error: --json cannot use interactive 'ask' mode. "
@@ -465,6 +470,8 @@ def cli(argv: list[str] | None = None) -> int:
         return 0 if result["status"] == "completed" else 1
 
     if args.command == "agents":
+        if args.agents_action == "run" and not args.json_output:
+            telemetry_notice_once()
         try:
             spec = load_agent_spec(args.config)
             if args.agents_action == "validate":
