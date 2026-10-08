@@ -69,3 +69,16 @@ npm install -g @locdex/cli --foreground-scripts --loglevel=info
 ```
 
 Locdex reports stages for Python environment creation, Python package installation, and CLI verification. Percentages are shown for wheel transfers only when pip knows the total bytes; we do not synthesize a misleading total percentage for environment setup.
+
+
+## Registry release checklist
+
+The scoped package is published under the `@locdex` npm organization. The organization must be created in npm's dashboard by an authorized owner; GitHub organization membership alone does not grant npm ownership.
+
+1. Confirm the corresponding Python version (`locdex==0.3.3a1`) is available on PyPI. The npm postinstall requires it; publishing npm first produces a broken user install.
+2. Run `npm run check` and `npm pack --dry-run --ignore-scripts` from this directory. Inspect the tarball file listing before publishing.
+3. Verify `npm whoami` identifies a maintainer authorized to publish under `@locdex`, and enable npm two-factor authentication.
+4. Publish the prerelease using `npm publish --access public --tag next`. The `next` dist-tag keeps this alpha off npm's default `latest` installation path until general-release acceptance tests succeed.
+5. Test a fresh installation with `npm install -g @locdex/cli@next --foreground-scripts --loglevel=info`, and confirm `locdex --version` and `locdex model list` work.
+
+Do not publish from a checkout containing secrets, and never put npm auth tokens in this repository. npm package publication requires interactive account authorization and is distinct from preparing this source tree.
