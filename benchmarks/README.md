@@ -6,7 +6,7 @@ The `benchmarks/` directory contains versioned evaluation protocols and reviewed
 
 **Qualification v1** is an installation/runtime acceptance check consisting of a fixed-output prompt and one bounded calculator-repair task. It measures whether a model/runtime can respond, invoke tools, preserve tests, and complete verification on a small fixture. It does not establish coding ability across languages, repositories, or task families. No aggregate performance claims follow from this probe.
 
-**LocdexBench** is a planned evaluation milestone for **v1.4 stable development** (with v1.4.0a1 as the testing prerelease of that same architecture). The implementation sequence, isolation requirements, task schema sketch, hidden-grader constraints and cohort attribution rules are defined in [LOCDEXBENCH_DESIGN.md](LOCDEXBENCH_DESIGN.md). The suite and leaderboard are **not yet implemented**; no score is published or implied. Benchmarks must be versioned, reproducible, and auditable before scores are published.
+**LocdexBench** is an evaluation workstream for v1.4 stable development. The [evaluation protocol](LOCDEXBENCH_DESIGN.md) covers task fixtures, execution isolation, independent grading, result attribution and reporting. The suite is not yet available, and no comparative leaderboard scores have been published.
 
 ## Repository layout
 

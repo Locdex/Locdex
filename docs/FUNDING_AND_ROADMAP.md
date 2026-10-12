@@ -1,67 +1,75 @@
-# Support Locdex v1.4 stable development — funding and engineering milestones
+# Sponsorship and Development Roadmap
 
-Locdex is an open-source, local-first coding-agent project. **The development target is the stable v1.4.0 release.** Stable v1.3.1 is already published; v1.4.0a1 is the public testing prerelease of that *same* v1.4 architecture, not a separate architectural version. Sponsorship helps fund maintainers' engineering time, reproducible evaluations, documentation, CI, and—in later phases—representative test hardware. Funding does not buy access to private source code or influence security findings and published benchmark results.
+Locdex is an open-source, local-first coding agent focused on repository intelligence, efficient model execution, controlled tool use, and verifiable software changes. Community support contributes to engineering, testing, documentation, and the infrastructure needed to maintain the project.
 
-> **Status:** Proposed sponsorship tiers and funding targets; **not** active payment tiers or guaranteed deadlines. GitHub payment tiers are created on an approved GitHub Sponsors profile, not in `.github/FUNDING.yml`. The funding configuration references the maintainer GitHub account (`bandojayy`); until that account has an approved Sponsors profile and the repository's **Sponsorships** feature is enabled, this file alone does not activate payments. Organization sponsorships could replace the maintainer link later.
+## Project status
 
-## Suggested monthly tiers
+**Locdex v1.4 stable is under development.** Version **v1.3.1** remains the previous stable release, while **v1.4.0a1** is the published testing prerelease of the same v1.4 architecture.
 
-| Monthly tier | Suggested GitHub Sponsors title | What support helps advance | Sponsor recognition |
-| --- | --- | --- | --- |
-| **$5** | Community supporter | Maintain installation guides, reproducible bug reports, first-run fixes | Optional supporter acknowledgement |
-| **$15** | Developer backer | LocdexBench v0 fixture library and test-verification harness | Optional monthly progress notes |
-| **$50** | Benchmark sponsor | Paired local-only/cloud-only/hybrid runs; methodology and public reporting | Optional acknowledgement on funding page |
-| **$150** | Infrastructure partner | CI matrix, Windows/Linux/macOS compatibility, bounded inference reliability | Optional public supporter credit |
-| **$500** | Research & engineering sponsor | Model-routing evaluations, hardware access, reproducible datasets and integrations | Optional supporter highlight, without editorial control |
+The current priorities are local-model compatibility, agent reliability, predictable cloud escalation, and a reproducible evaluation framework through LocdexBench. Progress is tracked through the [v1.4 roadmap](V1_4_STABLE_ROADMAP.md) and the repository's [issues](https://github.com/Locdex/Locdex/issues).
 
-These describe the *development priorities supported by the whole sponsorship pool*. They are **not feature purchases, contractual milestones, SLAs, or a guarantee that one sponsor's payment covers the stated work**. All core security, model routing, and benchmark methodology remain open and independently reviewed. Acknowledgements require sponsor opt-in.
+## What sponsorship supports
 
-## Transparent collective funding goals
-
-Illustrative **sustained monthly** funding thresholds; progress is counted from actual recurring monthly commitments, never from the number of sponsors or unreceived pledges. Reassess costs and targets publicly before announcing any campaign goal.
-
-| Sustained monthly support | Targeted milestone | Definition of done |
+| Area | Scope | Expected project outcome |
 | --- | --- | --- |
-| **$250/mo** | M0: developer experience and project health | Install smoke tests across supported Python versions; issue templates; validated guides; regression triage |
-| **$750/mo** | M1: **LocdexBench v0** | Public spec and versioned fixture set; isolated task runner; clean baseline/gold validations; per-run manifest and failure reporting |
-| **$2,000/mo** | M2: comparative **LocdexBench v0.1** | Repeatable paired runs, stable task selection, held-out graders, separate local/cloud/hybrid cohorts, sanitizer + uncertainty reporting |
-| **$5,000/mo** | M3: hardware and routing evaluation | Multiple hardware tiers, verified performance/cost budgets, router-regret analysis, reproducible CI evaluation and documented limitations |
+| Installation and developer experience | Runtime compatibility, model setup, clear diagnostics, release automation | More reliable onboarding across supported systems |
+| Agent reliability and security | Permissions, workspace isolation, verification, cancellation, rollback | Safer and more predictable code modifications |
+| LocdexBench | Licensed task fixtures, isolated execution, held-out graders, published methodology | Reproducible evidence of task-level coding performance |
+| Model routing and efficiency | Local/cloud comparisons, bounded context, latency and cost analysis | Better-informed model selection without mandatory cloud dependence |
+| Continuous maintenance | Regression testing, issue triage, compatibility updates and documentation | Sustainable open-source development |
 
-Funding may require sustained support over multiple months; these thresholds are planning targets, not linear cost estimates. If funding stays below target, the team can still work on milestones as time permits. Public status updates should report *work completed, blockers, expenses by category, and next acceptance criteria*, not fabricated performance gains.
+Sponsorship supports shared project priorities, not exclusive functionality or favorable treatment in benchmarks.
 
-## v1.4 stable development roadmap (unfunded work can still proceed)
+## Sponsorship levels
 
-The M0–M3 funding milestones below support the **single v1.4 stabilization effort**; they are not separate releases. A detailed checklist distinguishing v1.4 alpha, stable target and release gates is in [V1_4_STABLE_ROADMAP.md](V1_4_STABLE_ROADMAP.md).
+The following are **proposed monthly contribution levels**. Available tiers and benefits are determined by the published [GitHub Sponsors profile](https://github.com/sponsors/bandojayy), where eligible. Contributions are voluntary and do not constitute service agreements or guaranteed delivery dates.
 
-**M0 — release reliability and local-model onboarding**
-- Keep PyPI/npm prerelease versions in sync while the public v1.4.0a1 test build is evaluated; prepare matching final **v1.4.0 stable** packages only when release gates pass.
-- One reliable quickstart for CPU, constrained-memory systems, and standard developer machines.
-- Runtime failures should have actionable diagnostics and test coverage.
+| Monthly support | Level | Area supported |
+| --- | --- | --- |
+| **$5** | Community Supporter | Documentation, issue triage and accessibility of local-model setup |
+| **$15** | Developer Backer | Maintenance, test fixtures and contributor workflows |
+| **$50** | Benchmark Supporter | LocdexBench methodology, reproducible trials and reporting |
+| **$150** | Infrastructure Partner | CI, cross-platform qualification and runtime reliability |
+| **$500** | Research Supporter | Broader evaluations, hardware access and routing research |
 
-**M1 — LocdexBench v0 (next)**
-- Version and validate a manifest for 5–10 small, owned/licensed Python and TypeScript bug-fix tasks.
-- Snapshot clean fixture repositories at a known commit; verify that the supplied bug fails and a gold fix passes.
-- Build a disposable, offline-first runner; keep held-out verification outside the agent workspace.
-- Run the same tasks with fixed budgets and report successes **and** failures.
+Public acknowledgements may be offered with sponsor consent. Financial support does **not** provide control over security disclosures, benchmark selection, results, product architecture, or editorial decisions.
 
-**M2 — meaningful comparisons**
-- Expand to at least 20 validated tasks spanning bug fixes, multi-file changes and tests.
-- Repeat stochastic trials; report pass@1, cost/solved, time/solved, tool errors, timeout rate and confidence ranges.
-- Compare local-only, cloud-only and hybrid separately. Do not credit cloud completions to local models.
+## Development milestones
 
-**M3 — improve routing based on evidence**
-- Evaluate model-selection policies on paired tasks, not just observational production telemetry.
-- Measure quality/latency/cost trade-offs and router regret; publish model/backend/hardware context.
-- Add regression gates for privacy, protected tests, rollback and safe cancellation.
+These milestones represent planned engineering outcomes. Funding levels below are **illustrative targets for sustained aggregate monthly support**, not confirmed revenue or automatic completion triggers.
 
-The benchmark design is in [`benchmarks/LOCDEXBENCH_DESIGN.md`](../benchmarks/LOCDEXBENCH_DESIGN.md). This file states *planned* work toward **stable v1.4**; it does not claim LocdexBench, any score, or stable v1.4 has shipped.
+| Funding target | Milestone | Acceptance criteria |
+| --- | --- | --- |
+| **$250/month** | **M0 — Release quality** | Documented installation checks, reproducible regressions and improved onboarding |
+| **$750/month** | **M1 — LocdexBench v0** | Validated task manifests, licensed fixtures, isolated evaluation and baseline/gold verification |
+| **$2,000/month** | **M2 — Comparative evaluation** | Repeated local-only, cloud-only and hybrid trials with independent grading and sanitized results |
+| **$5,000/month** | **M3 — Hardware and routing evaluation** | Multiple hardware tiers, documented cost/latency metrics and comparative routing analysis |
 
-## Configure GitHub Sponsors
+Milestone sequencing depends on engineering capacity, technical results, and available resources. Development may proceed independently of reaching a funding target. None of these targets is presented as achieved.
 
-1. Apply to **GitHub Sponsors** for the account that will receive payouts (maintainer `bandojayy`, or an eligible project organization). Complete payout, tax, and 2FA requirements and wait for approval.
-2. Set up and **publish** the payment tiers from the table above in the Sponsors dashboard; edit the proposed amounts and rewards to fit actual capacity.
-3. In repository Settings → General → Features, enable **Sponsorships**. Ensure `.github/FUNDING.yml` on `main` points to the **active approved** account.
-4. Link the Sponsors profile to this roadmap. Add a public quarterly milestone update and transparent status labels to the roadmap/issues.
-5. If there is no active approved Sponsors profile, do not tell users the payment button works. Change the funding account only once a verified recipient is ready.
+## Roadmap for v1.4
 
-Project-related support must not be characterized as a charitable donation or used to promise special benchmark placement.
+**Release quality:** Validate Python and npm installation paths, model setup, timeout handling and supported operating-system configurations.
+
+**Agent reliability:** Strengthen guarded file operations, task continuation, session handling, permissions, test preservation, verification and rollback.
+
+**LocdexBench:** Establish a trustworthy benchmark protocol before reporting comparative scores. The [LocdexBench design](../benchmarks/LOCDEXBENCH_DESIGN.md) defines fixture provenance, independent grading, isolation, attribution and reporting requirements.
+
+**Routing and efficiency:** Use controlled evaluation results to assess model-selection quality, cloud fallback behavior and context economics. Production telemetry alone is not a valid comparative benchmark.
+
+**Stable release:** Publish v1.4.0 following the [stable-release criteria](V1_4_STABLE_ROADMAP.md). The v1.4.0a1 prerelease and the stable target share one architectural direction.
+
+## Accountability and transparency
+
+Project progress is documented through version-controlled specifications, GitHub issues, pull requests, CI runs, and release notes. Benchmark results will be reported only when reproducible and independently verifiable. Published results must distinguish local-only successes from cloud-assisted outcomes and disclose material limitations.
+
+Funding may support maintainers' time, computing resources, testing infrastructure and distribution costs. Proposed goals are planning estimates rather than audited budgets, delivery commitments or charitable donation representations.
+
+## Support the project
+
+- [View the source code and open issues](https://github.com/Locdex/Locdex)
+- [Review the v1.4 release roadmap](V1_4_STABLE_ROADMAP.md)
+- [Explore LocdexBench](../benchmarks/LOCDEXBENCH_DESIGN.md)
+- [GitHub Sponsors](https://github.com/sponsors/bandojayy)
+
+Sponsorship availability depends on the payment options enabled on GitHub Sponsors.

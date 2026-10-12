@@ -2,7 +2,7 @@
 
 The `rules-v0` routing implementation and v1 event schema have their own versions; these are not Locdex product release numbers. Stable v1.4 is under development and `v1.4.0a1` is its published testing prerelease.
 
-## What is implemented now
+## Implemented capabilities
 
 ### Router
 
@@ -44,7 +44,7 @@ This prevents the router from merely learning its own previous selection policy.
 
 ## Backend separation
 
-The public repo now includes an auditable, open-source Cloudflare Worker starter under `infra/telemetry-worker/`. It provides a write-only `POST /v1/events` endpoint, strict v1 validation, Cloudflare rate limiting, R2 canonical sanitized batches, and Analytics Engine projections. No Cloudflare account secret or admin token is stored in the client or Git repository. Private operational infrastructure and training pipelines stay outside the public repo. The Worker must be deployed to a real account and its resulting HTTPS URL configured before launch clients can upload.
+The repository includes an auditable, open-source Cloudflare Worker starter under `infra/telemetry-worker/`. It provides a write-only `POST /v1/events` endpoint, strict v1 validation, Cloudflare rate limiting, R2 canonical sanitized batches, and Analytics Engine projections. No Cloudflare account secret or admin token is stored in the client or Git repository. Private operational infrastructure and training pipelines stay outside the public repo. The Worker must be deployed to a real account and its resulting HTTPS URL configured before launch clients can upload.
 
 ## Commands
 

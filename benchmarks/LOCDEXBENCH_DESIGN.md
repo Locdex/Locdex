@@ -1,6 +1,6 @@
-# LocdexBench: proposal and v0 implementation plan
+# LocdexBench — Evaluation Protocol and Implementation Roadmap
 
-**Status: proposed, not yet implemented, as part of v1.4 stable development.** Stable v1.3.1 is the previous release; v1.4.0a1 is a testing prerelease of the same v1.4 architecture that will underpin stable v1.4.0. Locdex `model qualify` is a tiny runtime/agent acceptance probe. It must never be renamed or advertised as a LocdexBench score. This document defines the first genuinely comparative evaluation.
+**Status:** LocdexBench is in development as part of v1.4 stable validation; comparative results have not been published. The existing `locdex model qualify` command provides runtime and single-fixture acceptance checks rather than benchmark scores. The v1.4.0a1 prerelease and planned v1.4.0 stable release share the same architecture.
 
 ## The question
 
@@ -23,7 +23,7 @@ Start with **5 owned/licensed fixtures** that run quickly without network access
 
 All tasks start from fixed **commit SHAs**, use pinned tools/dependencies, and have *visible* tests plus *held-out* tests kept **outside** the agent's workspace. Do not ingest arbitrary third-party repositories until task licenses, dependencies, secrets and reproducibility have been audited.
 
-A task manifest v0 (planned YAML format):
+Proposed v0 task manifest (illustrative YAML):
 
 ```yaml
 suite: locdexbench-v0
@@ -116,7 +116,7 @@ Report failures, exclusions and censored timeouts. Disclose whether a run is col
 | **3. Trials and reporting** | 3 repeated trials per task/model/mode; JSONL runs; grouped summary | Failed and timed-out trials counted; zero sensitive source in publishable output |
 | **4. Routing evidence** | Paired local/cloud/hybrid dataset; cost/quality/latency tradeoff dashboard | Router compared to actual alternatives and baseline, not just selected-route telemetry |
 
-The **first PR after this spec** should be a *manifest parser/validator + one deliberately failing Python fixture + protected out-of-repo grader*, with tests for accepted and rejected manifests. The next PR adds the isolated runner and gold-patch validation. **Do not start with an expensive leaderboard or an AI-generated benchmark dataset**: establish reproducibility and isolation first.
+The initial implementation covers manifest validation, a seeded Python defect fixture and an out-of-workspace grader. An isolated runner and reference-patch validation follow. Comparative reporting is deferred until reproducibility and isolation criteria are met.
 
 ## Funding and ownership
 

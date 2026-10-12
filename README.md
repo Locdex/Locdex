@@ -2,13 +2,13 @@
 
 **An open-source, local-first coding agent: repository intelligence and verified code changes, with optional cloud-model escalation.**
 
-**Development status:** **v1.4 stable (`v1.4.0`) is under development** · **Latest published v1.4 test build:** `v1.4.0a1` (alpha) · **Previous stable release:** `v1.3.1` · Python 3.10–3.12 · Node.js 18+ for the npm launcher.
+**Release status:** **v1.4.0 stable under development** · **v1.4.0a1 testing prerelease available** · **v1.3.1 previous stable release** · Python 3.10–3.12 · Node.js 18+ for the npm launcher.
 
-The **v1.4 architecture** deliberately separates **the Agent** (repo understanding, decisions, permissions, tools, verification) from **the Model Runtime** (local model installation, backend execution, adaptive inference and provider adapters). Models are replaceable; the agent's safety and workflow are not delegated to the model. The released `v1.4.0a1` prerelease tests this **same architecture** on the path to stable `v1.4.0`; it is **not a separate product generation**.
+The **v1.4 architecture** separates the **Agent** (repository intelligence, planning, guarded tools and verification) from the **Model Runtime** (local model management, inference and optional cloud-provider adapters). The published `v1.4.0a1` prerelease tests this same architecture before the stable `v1.4.0` release.
 
 **Start here:** [v1.4 stable development roadmap](docs/V1_4_STABLE_ROADMAP.md) · [Local-model quickstart](docs/QUICKSTART_LOCAL_MODELS.md) · [Agent vs runtime architecture](#two-architectural-layers-one-v14-release) · [Sponsor / funding roadmap](docs/FUNDING_AND_ROADMAP.md) · [LocdexBench plan](benchmarks/LOCDEXBENCH_DESIGN.md) · [Contribute](#development)
 
-> **Release tracks:** `v1.3.1` is the previous **stable** version. `v1.4.0a1` is the published **v1.4 testing prerelease**, installable with `pip install "locdex==1.4.0a1"` or `npm install -g @locdex/cli@next`. **Stable `v1.4.0` is not released yet.** Both v1.4 builds belong to the same architecture; no architecture rename or split is implied.
+> **Versioning:** `v1.3.1` is the previous stable release. `v1.4.0a1` is available for testing via `pip install "locdex==1.4.0a1"` or `npm install -g @locdex/cli@next`. Stable `v1.4.0` remains under development.
 
 ## Install Locdex
 
@@ -25,13 +25,13 @@ locdex --version
 
 **The npm package is a launcher, not a JavaScript rewrite of the agent.** Neither package installs a GGUF model automatically. For end-to-end Windows, macOS and Linux setup, see the **[local-model quickstart](docs/QUICKSTART_LOCAL_MODELS.md)**.
 
-> The npm alpha uses the `next` dist-tag, not `latest`; normal unpinned installation may select the existing **v1.3 stable** release. The future stable v1.4 installer will be documented and published separately when its acceptance gates pass. See [v1.4 roadmap](docs/V1_4_STABLE_ROADMAP.md).
+> The npm prerelease uses the `next` dist-tag, not `latest`. Unpinned installations may select the previous stable version. The [v1.4 release roadmap](docs/V1_4_STABLE_ROADMAP.md) lists the stable-release criteria.
 
 ## First-time setup
 
 Locdex does not silently download a model or install a compute backend.
 
-Inspect your hardware:
+Inspect available hardware:
 
 ```bash
 locdex status
@@ -44,13 +44,13 @@ locdex runtime install --backend auto
 locdex runtime verify
 ```
 
-See models that fit different hardware tiers:
+List supported model profiles and hardware guidance:
 
 ```bash
 locdex model list
 ```
 
-Install and select one explicitly (choose based on real RAM and hardware):
+Install and select an appropriate local model:
 
 ```bash
 locdex model install smoke
@@ -377,7 +377,7 @@ locdex route --task "fix the failing refresh-token test" --repo .
 locdex router status
 ```
 
-BASIC routing telemetry is **on by default**, with a visible first-run notice and an immediate opt-out: `locdex telemetry disable` (which also clears pending events). It contains strictly allow-listed task/model/outcome features and excludes prompts, code, diffs, paths, repository identity, responses, secrets and persistent installation IDs. No network request is made until you configure a real HTTPS endpoint. When configured, Locdex attempts to upload a small batch after each task; failures do not interrupt coding. RESEARCH telemetry remains separately opt-in.
+BASIC routing telemetry is **on by default**, with a visible first-run notice and an immediate opt-out: `locdex telemetry disable` (which also clears pending events). It contains strictly allow-listed task/model/outcome features and excludes prompts, code, diffs, paths, repository identity, responses, secrets and persistent installation IDs. No data is uploaded unless an HTTPS endpoint is configured. When configured, Locdex attempts to upload a small batch after each task; failures do not interrupt coding. RESEARCH telemetry remains separately opt-in.
 
 ```bash
 locdex telemetry status
@@ -411,7 +411,7 @@ flowchart TD
 
 **Owns:** repository retrieval, bounded context, tool-call permissions, workspace boundaries, model/task routing, test preservation, verification, history and rollback.
 
-The diagram uses a compact GitHub-compatible Mermaid flowchart; the equivalent steps are also described in the table below.
+The diagram summarizes the agent workflow; the architectural boundary is described in the table below.
 
 ### B. Model runtime architecture — how Locdex gets model decisions
 
@@ -442,7 +442,7 @@ flowchart TD
 
 **More detail:** [Architecture specification](ARCHITECTURE.md) · [v1.4 stable development plan](docs/V1_4_STABLE_ROADMAP.md) · [Local-model quickstart](docs/QUICKSTART_LOCAL_MODELS.md) · [Benchmarking plan](benchmarks/LOCDEXBENCH_DESIGN.md).
 
-The two diagrams distinguish **software responsibilities**, not prerelease/stable architecture versions. The v1.4 prerelease and forthcoming v1.4 stable release share this design; stability work is about tested behavior, bug fixes, and acceptance criteria.
+Both diagrams describe the v1.4 architecture shared by the prerelease and planned stable release.
 
 ## Development
 
@@ -468,7 +468,7 @@ python -m pip install -e ".[dev]"
 python scripts/preflight.py
 ```
 
-The editable `.[dev]` install and `scripts/preflight.py` are contributor workflows used to run the test/lint/package gates before changes are merged.
+The editable `.[dev]` environment and `scripts/preflight.py` provide source, test, lint and package validation for contributions.
 
 
 ## Configured cloud fallback
@@ -498,15 +498,15 @@ Router training is offline:
 locdex router train --input routing-events.jsonl --output router.json
 ```
 
-The trainer consumes the sanitized routing-event schema and produces the same versioned lookup artifact used by the local router. Shared telemetry remains opt-in and does not perform online training.
+The trainer consumes the sanitized routing-event schema and produces the same versioned lookup artifact used by the local router. Router training is offline; BASIC telemetry consent and optional uploading are controlled separately.
 
 
 ## Installation progress
 
-`locdex model install <model>` displays the model-download byte percentage, transfer rate and estimated time remaining when the remote server reports a content length. Once downloaded, a separate checksum-verification bar tracks bytes checked; there is no misleading combined-install percentage. `locdex runtime install --backend auto` shows the pip wheel download progress and an explicit backend-verification step. Package installation from npm is reported in stages and can be made fully visible with `npm install -g @locdex/cli --foreground-scripts --loglevel=info`.
+`locdex model install <model>` displays the model-download byte percentage, transfer rate and estimated time remaining when the remote server reports a content length. Once downloaded, a separate checksum-verification bar tracks bytes checked; there is no misleading combined-install percentage. `locdex runtime install --backend auto` shows the pip wheel download progress and an explicit backend-verification step. Package installation from npm is reported in stages and can be made fully visible with `npm install -g @locdex/cli@next --foreground-scripts --loglevel=info`.
 
 
-Multi-agent runs support up to 16 agents in one config, up to 8 concurrent workers (`--parallel 8`), and default to 1. Interactive `ask` permissions require `--parallel 1`; parallel agents use isolated worktrees and a non-interactive permission policy. Keep concurrency low for large RAM-hungry local models.
+Multi-agent runs support up to 16 agents in one config, up to 8 concurrent workers (`--parallel 8`), and default to 1. Interactive `ask` permissions require `--parallel 1`; parallel agents use isolated worktrees and a non-interactive permission policy. High-memory models may require lower concurrency to remain within available RAM or VRAM.
 
 ## Live terminal dashboard and bounded local inference
 
@@ -544,7 +544,7 @@ locdex inference budget --model qwen25-7b --max-tokens 512 --prompt-tokens 4000
 locdex inference budget --model smoke --cloud-fallback
 ```
 
-A configured cloud provider shortens the maximum estimated local inference wait (unless a user explicitly overrides it), but only when the selected sandbox permits cloud access. You can still set a fixed 20–600-second per-phase limit with `LOCDEX_INFERENCE_TIMEOUT_SECONDS`. Without the override, loading and generation have separate bounded deadlines. This is a **per-call** policy, distinct from the 12-step limit.
+A configured cloud provider shortens the maximum estimated local inference wait (unless a user explicitly overrides it), but only when the selected sandbox permits cloud access. A fixed 20–600-second per-phase limit can be set with `LOCDEX_INFERENCE_TIMEOUT_SECONDS`. Without the override, loading and generation have separate bounded deadlines. This is a **per-call** policy, distinct from the 12-step limit.
 
 After a local native inference timeout, the execution wrapper converts the failure to a recorded agent outcome, relies on the hardened agent's rollback, and attempts its existing OpenAI-compatible cloud fallback **only if the user explicitly configured cloud inference**, enabled cloud usage, and allowed network access through the sandbox. Cancellation never causes escalation. Cloud fallback is not the same endpoint as Locdex's telemetry Worker; the telemetry API does not host models.
 
@@ -560,14 +560,14 @@ locdex cloud status
 locdex
 ```
 
-Inside the Locdex chat use `/sandbox workspace-network` before starting a task. The default `workspace-network` sandbox permits network-capable actions, subject to permission policies; cloud inference remains independently disabled until credentials and `LOCDEX_CLOUD_ENABLED=1` are configured. Select `workspace-write` for network-denied operation. To keep all work on-device, do not configure a cloud provider and leave the default sandbox unchanged.
+Inside the Locdex chat use `/sandbox workspace-network` before starting a task. The default `workspace-network` sandbox permits network-capable actions, subject to permission policies; cloud inference remains independently disabled until credentials and `LOCDEX_CLOUD_ENABLED=1` are configured. Select `workspace-write` for network-denied operation. For network-denied task execution, use `workspace-write` and leave cloud inference unconfigured.
 
 
 ## Built-in cloud providers
 
 Use `locdex cloud providers` to list supported providers, API types, base URLs and expected **environment variable names**. No provider SDK is mandatory. Native Anthropic Messages uses forced JSON-schema tool use; OpenAI, Gemini, Groq, OpenRouter, DeepSeek, Together, Mistral, and custom services use compatible Chat Completions APIs. Support for an individual model depends on that provider's model-specific compatibility.
 
-PowerShell, OpenAI example (replace with a **real** model available in your account):
+PowerShell — OpenAI configuration (requires an available model ID):
 
 ```powershell
 $env:LOCDEX_CLOUD_ENABLED = "1"
@@ -591,13 +591,13 @@ locdex cloud status
 
 For Gemini, Groq, OpenRouter, DeepSeek, Together, and Mistral change the provider/model and set the respective `GEMINI_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `DEEPSEEK_API_KEY`, `TOGETHER_API_KEY`, or `MISTRAL_API_KEY`. For any other OpenAI-compatible service set `LOCDEX_CLOUD_PROVIDER=custom`, `LOCDEX_CLOUD_BASE_URL`, `LOCDEX_CLOUD_MODEL`, and `LOCDEX_CLOUD_API_KEY`.
 
-The existing `LOCDEX_CLOUD_API_KEY` environment variable overrides provider-specific key variables for backwards compatibility. Always remove the old variable before switching providers, or it may override the intended key. Environment variables apply to the current terminal session. Never commit keys or put them in a benchmark artifact.
+The existing `LOCDEX_CLOUD_API_KEY` environment variable overrides provider-specific key variables for backwards compatibility. Clear previously set generic credentials when switching providers to prevent unintended overrides. Environment variables apply to the current terminal session. Never commit keys or put them in a benchmark artifact.
 
 Cloud inference still requires an explicitly configured provider, a network-enabled sandbox and normal permission authorization. The Cloudflare telemetry endpoint is **not** an inference provider.
 
 ## Public model qualification and benchmarks
 
-**LocdexBench is not shipped yet.** It is an active engineering milestone for completing and validating **v1.4 stable**, not a distinct architecture release. The next implementation milestone is a safely isolated, reproducible [five-task pilot with hidden grading](benchmarks/LOCDEXBENCH_DESIGN.md). See the [v1.4 stable roadmap](docs/V1_4_STABLE_ROADMAP.md) and [funding-linked milestone roadmap](docs/FUNDING_AND_ROADMAP.md). Public qualification probes are different and must not be presented as LocdexBench scores.
+**LocdexBench is under development** as part of the v1.4 release-validation program. Its initial scope is a reproducible [five-task pilot with independent grading](benchmarks/LOCDEXBENCH_DESIGN.md), separate from existing model qualification probes. Project milestones are documented in the [v1.4 roadmap](docs/V1_4_STABLE_ROADMAP.md).
 
 
 Locdex now supports **sanitized qualification exports**, separate from a full benchmark suite:
@@ -608,16 +608,16 @@ locdex benchmark export --input "PATH_FROM_REPORT_PATH_FIELD" --output "benchmar
 locdex benchmark summary --dir benchmarks/results
 ```
 
-These exports deliberately strip filenames, raw source, prompts, model text, private hardware identifiers, and full paths. Only publish results you have actually run and reviewed. Keep the original qualification JSON private (in the Locdex user cache). Qualification is a basic single-fixture probe, **not** LocdexBench, SWE-bench, or a statistically meaningful leaderboard. The source, benchmark definition, method, hardware tiers, model revisions, outcomes, and failure counts must accompany broader performance claims.
+Sanitized exports exclude filenames, raw source, prompts, model responses, private hardware identifiers and full paths. Original qualification reports remain in the local application cache. Qualification is a single-fixture acceptance probe—not LocdexBench, SWE-bench or a comparative leaderboard. Published performance claims require a documented method, task definition, hardware tier, model revision, outcomes and failure counts.
 
-Publish vetted JSON in `benchmarks/results/` with Git, generate public summaries and charts in a future website `/benchmarks` page, and mirror reproducible datasets on Hugging Face. See `benchmarks/README.md`. No fake benchmark scores are included.
+The publication protocol for reviewed results is defined in [benchmarks/README.md](benchmarks/README.md). No comparative benchmark scores are published with this release.
 
 
 ## Network-enabled default and local evidence-first cloud routing
 
 New Locdex sessions and ordinary `locdex task` runs default to `workspace-network`. This is a capability policy, not permission to run arbitrary commands or transmit code: dangerous tools remain denied, the ordinary `ask` permission gate remains active, and cloud model execution requires explicit configuration and authorization. Existing saved sessions retain their prior sandbox selection; use `/sandbox workspace-network` in an existing session or `/sandbox workspace-write` to disable network access.
 
-When local execution needs a configured cloud fallback, Locdex assembles a compact **evidence pack on the user's computer** before the first paid inference API request: targeted source snippets, retrieval plan, dependency graph, repository outline, local failure context, and bounded prior-session notes. Evidence collection uses a bounded budget based on the configured cloud context capacity and redacts detected secret patterns. The cloud agent skips redundant broad repository context and local pre-read copies while retaining the ability to reread exact files through tools. Cloud provider request messages can still contain task-relevant code, so cloud enablement constitutes consent to send that content to the selected provider; automatic redaction is not a guarantee against every secret.
+For authorized cloud fallback, Locdex assembles a compact **evidence pack locally** before the first paid inference API request: targeted source snippets, retrieval plan, dependency graph, repository outline, local failure context, and bounded prior-session notes. Evidence collection uses a bounded budget based on the configured cloud context capacity and redacts detected secret patterns. The cloud agent skips redundant broad repository context and local pre-read copies while retaining the ability to reread exact files through tools. Cloud provider request messages can still contain task-relevant code, so cloud enablement constitutes consent to send that content to the selected provider; automatic redaction is not a guarantee against every secret.
 
 ## Bounded qualification
 

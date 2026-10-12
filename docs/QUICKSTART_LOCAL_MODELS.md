@@ -1,13 +1,13 @@
 # Locdex v1.4 local-model quickstart — stable version in development
 
-**Version guide:** v1.3.1 is the previous stable release. Stable **v1.4.0 is under development**; the currently available **v1.4.0a1 prerelease** tests the *same* v1.4 architecture. The commands below intentionally install that alpha build until stable v1.4 is ready.
+**Version availability:** v1.3.1 is the previous stable release. Stable **v1.4.0 remains under development**; the published **v1.4.0a1 prerelease** tests the same architecture. The installation commands below select the available testing prerelease.
 
 Get Locdex running **locally**, with no Ollama and no cloud-model API key. Local model downloads are explicit; package installation alone does not download models or install `llama-cpp-python`. For the remaining stable release criteria, see [v1.4 development roadmap](V1_4_STABLE_ROADMAP.md).
 
 ## 1. Requirements
 
 - Windows, macOS, or Linux with **Python 3.10–3.12** and Git
-- Sufficient memory/disk for your chosen GGUF model; CPU-only is supported but can be slow
+- Sufficient RAM and disk space for the selected GGUF model; CPU-only execution is supported but can be slow
 - For the npm launcher, Node.js **18+**, plus one of the supported Python versions
 
 Choose **one** installation route:

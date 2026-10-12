@@ -1,8 +1,10 @@
-# Start Here — Locdex v1.4 (Stable Under Development)
+# Getting Started with Locdex v1.4
 
 `v1.3.1` is the previous stable release. `v1.4.0a1` is the published testing prerelease of the **same v1.4 architecture** being prepared for stable `v1.4.0`.
 
-The primary product path is now the persistent coding-agent interface:
+The recommended interface is the persistent coding-agent terminal. For the published v1.4 prerelease, see the [installation and local-model quickstart](docs/QUICKSTART_LOCAL_MODELS.md).
+
+For contributors working from a source checkout:
 
 ```bash
 python -m pip install -e ".[dev]"
@@ -34,4 +36,4 @@ cargo build --release
 $env:LOCDEX_WINDOWS_SANDBOX = (Resolve-Path .\target\release\locdex-windows-sandbox.exe)
 ```
 
-Cloud fallback requires explicit enabling and provider credentials. BASIC telemetry is enabled by default with a visible opt-out but transmits nothing until a real HTTPS endpoint is configured; RESEARCH mode is separately opt-in. Locdex never auto-commits or auto-merges multi-agent work.
+Cloud inference requires explicit enablement and provider credentials. BASIC routing telemetry defaults to on with a first-run notice and immediate opt-out; no upload occurs without a configured HTTPS endpoint. RESEARCH telemetry is separately opt-in. Multi-agent workflows do not auto-commit or auto-merge.
