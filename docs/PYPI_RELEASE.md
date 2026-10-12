@@ -8,7 +8,7 @@
 | v1.4 testing prerelease | `v1.4.0a1` / PyPI `locdex==1.4.0a1` / npm `@locdex/cli@1.4.0-alpha.1` | Published prerelease |
 | v1.4 stable target | `v1.4.0` / PyPI `locdex==1.4.0` / npm `@locdex/cli@1.4.0` | **Under development; not published** |
 
-The v1.4 prerelease and v1.4 stable target implement the **same architecture**. The alpha exists for testing, bug fixing and release qualification. This document records the prerelease procedure below; **do not repeat its alpha publication steps to create the future stable release**.
+The v1.4 prerelease and v1.4 stable target implement the **same architecture**. The alpha exists for testing, bug fixing and release qualification. The prerelease procedure is retained for traceability. Stable v1.4 artifacts will be built, reviewed, tagged and published separately.
 
 - PyPI project: `locdex`
 - Canonical repository: `Locdex/Locdex`
@@ -63,7 +63,7 @@ No PyPI API key needs to be stored in GitHub or in the codebase. The PyPI publis
 
 The above v1.4.0a1 release was published and should remain historically accurate. Do not rerun a released tag to substitute new stable artifacts.
 
-## Next: stable v1.4.0 release (not yet published)
+## Stable v1.4.0 release process (pending)
 
 1. Complete and document the [v1.4 stable acceptance gates](V1_4_STABLE_ROADMAP.md), using the prerelease for real-world testing.
 2. On a reviewed release commit, change `pyproject.toml` to `version = "1.4.0"` and change the npm wrapper package version to `1.4.0` plus its Python pin to `locdex==1.4.0`; update tests and changelog together.
@@ -72,4 +72,4 @@ The above v1.4.0a1 release was published and should remain historically accurate
 5. Validate `pip install "locdex==1.4.0"` after PyPI publication; then publish `@locdex/cli@1.4.0` on npm as the stable `latest` channel after its independent acceptance tests. Never repoint `latest` at an alpha.
 6. Announce v1.4 stable only after the actual GitHub, PyPI and npm release records exist.
 
-The version bump to `1.4.0` is deliberately deferred; the repository's current `1.4.0a1` metadata must continue to identify the published testing build until stable release work is approved.
+Source package metadata remains at `1.4.0a1` until a stable-release preparation commit is reviewed. Published alpha artifacts retain their original version and tag.

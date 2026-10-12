@@ -41,7 +41,7 @@ locdex telemetry clear
 
 `disable` also clears unsent queued metrics. `LOCDEX_TELEMETRY_MODE=off` suppresses telemetry regardless of file configuration.
 
-Use a custom domain like `telemetry.your-domain.tld` only after configuring its Worker route in Cloudflare. There is no automatic default URL compiled into Locdex until that real domain is deployed and verified.
+A custom domain such as `telemetry.example.org` requires a configured Cloudflare Worker route. There is no automatic default URL compiled into Locdex until that real domain is deployed and verified.
 
 ## 3. Launch behavior
 
@@ -67,10 +67,10 @@ LIMIT 20;
 
 ## 4. Operator safety before aggressive launch
 
-- The Worker is a **public write-only telemetry endpoint**. Rate limiting is in the Worker, but you should also configure Cloudflare edge WAF/bot controls and monitor for poisoning/abuse.
+- The Worker is a **public write-only telemetry endpoint**. Rate limiting is in the Worker, and should be supplemented by Cloudflare edge WAF/bot controls and monitoring for data poisoning or abuse.
 - Set `PAUSE_INGESTION` to `1` in Wrangler config and redeploy to halt ingestion if abuse or a privacy incident occurs.
 - Set R2 lifecycle/retention policies and account spending/billing alerts. Analytics Engine is not a substitute for retained, controlled research datasets.
 - Cloudflare may process connection metadata (for example IPs) to deliver the HTTP request even though Locdex does not put those identifiers in the telemetry payload or R2 objects.
 - A public endpoint cannot verify that every anonymous event genuinely came from a Locdex installation; reject poisoning statistically and do not treat production selection-biased outcomes as counterfactual benchmark data.
-- Consider consent and privacy requirements for the jurisdictions where you distribute Locdex. The default-on BASIC setting is visible to users and reversible; RESEARCH requires a separate explicit enable.
+- Deployments must account for consent and privacy obligations in the jurisdictions where Locdex is distributed. The default-on BASIC setting is visible to users and reversible; RESEARCH requires a separate explicit enable.
 - Never paste Cloudflare admin tokens or deploy credentials in a GitHub issue, README, or source file.

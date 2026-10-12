@@ -70,10 +70,10 @@ npm hides some lifecycle-script output by default. For full stage messages and p
 npm install -g @locdex/cli@next --foreground-scripts --loglevel=info
 ```
 
-Locdex reports stages for Python environment creation, Python package installation, and CLI verification. Percentages are shown for wheel transfers only when pip knows the total bytes; we do not synthesize a misleading total percentage for environment setup.
+Locdex reports stages for Python environment creation, Python package installation, and CLI verification. Percentages are shown for wheel transfers only when pip knows the total bytes; no artificial overall setup percentage is generated.
 
 
-## v1.4 prerelease registry checklist (completed); stable v1.4.0 remains pending
+## Package release verification
 
 The scoped package is published under the `@locdex` npm organization. The organization must be created in npm's dashboard by an authorized owner; GitHub organization membership alone does not grant npm ownership.
 

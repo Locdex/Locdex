@@ -56,7 +56,7 @@ RUNTIME:                           local profiles -> hardware -> llama.cpp worke
                                               model response -> agent
 ```
 
-For a visually separated, component-level view, see [README: Two architectural layers, one v1.4 release](README.md#two-architectural-layers-one-v14-release). For end-user installation, see [local-model quickstart](docs/QUICKSTART_LOCAL_MODELS.md).
+The [README architecture diagrams](README.md#two-architectural-layers-one-v14-release) illustrate agent and runtime components. Installation instructions appear in the [local-model quickstart](docs/QUICKSTART_LOCAL_MODELS.md).
 
 ## Local models
 
@@ -66,9 +66,9 @@ The runtime detects hardware, installs compatible prebuilt llama.cpp backends wh
 
 ## Repository Intelligence vs Context
 
-`intelligence/` answers “what do we know about this repository?”
+`intelligence/` identifies repository structure, symbols, dependencies, tests and related context.
 
-`context/` answers “what is the smallest representation of that knowledge this task/model should receive?”
+`context/` selects and compiles a bounded task-relevant representation of that information.
 
 Cloud models never receive direct filesystem access. They receive bounded context packs; additional context is retrieved locally by Locdex and disclosed progressively.
 

@@ -117,11 +117,11 @@ npm install -g @locdex/cli@next --foreground-scripts --loglevel=info
 
 ## Exit, Ctrl+C and approval handling
 
-PowerShell: run `locdex` inside your project. Enter `exit`, `quit`, `/exit`, or `/quit` to close the idle chat. During a task, the same commands request cancellation and close the chat when the operation stops. `/cancel` and Ctrl+C request normal cancellation. If a native model call does not yield, a second Ctrl+C within four seconds after the first (not an immediate duplicate) forces the process to terminate, but rollback cannot be guaranteed. Permission requests reuse the active prompt rather than cancelling its input task.
+On Windows PowerShell, `locdex` starts an interactive session in the current project directory. Enter `exit`, `quit`, `/exit`, or `/quit` to close the idle chat. During a task, the same commands request cancellation and close the chat when the operation stops. `/cancel` and Ctrl+C request normal cancellation. If a native model call does not yield, a second Ctrl+C within four seconds after the first (not an immediate duplicate) forces the process to terminate, but rollback cannot be guaranteed. Permission requests reuse the active prompt rather than cancelling its input task.
 
 ## Windows troubleshooting: activity, approval and timeouts
 
-Pull the latest source and reinstall the development build, then launch from the test project. The activity and approval panels appear above the text input. A short permission question and labeled choices must be visible together; `y` allows once and `a` allows similar actions for the session. The interactive model process uses independently calculated load/generation deadlines based on model size, hardware capacity and locally measured inference speed. Timeouts terminate that process and produce a recoverable failure. Cloud fallback requires configured inference credentials and the `workspace-network` sandbox; telemetry credentials alone cannot provide cloud inference.
+For development builds, refresh the source checkout, reinstall the editable package and launch Locdex in a test workspace. The activity and approval panels appear above the text input. A short permission question and labeled choices must be visible together; `y` allows once and `a` allows similar actions for the session. The interactive model process uses independently calculated load/generation deadlines based on model size, hardware capacity and locally measured inference speed. Timeouts terminate that process and produce a recoverable failure. Cloud fallback requires configured inference credentials and the `workspace-network` sandbox; telemetry credentials alone cannot provide cloud inference.
 
 ```powershell
 cd C:\path\to\Locdex

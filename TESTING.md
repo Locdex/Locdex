@@ -37,7 +37,7 @@ locdex prepare --task "password=supersecret fix auth" --cloud
 
 Verify that the output reports at least one redaction and does not expose the secret value.
 
-## Later stages
+## Additional qualification stages
 
 Runtime/model, tool execution, Git, provider APIs, benchmarks, and platform qualification come after the source/package gate.
 
