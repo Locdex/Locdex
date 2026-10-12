@@ -2,17 +2,17 @@
 
 **An open-source, local-first coding agent: repository intelligence and verified code changes, with optional cloud-model escalation.**
 
-**Release:** `v1.4.0a1` (alpha) · **Engine architecture:** v3.3 · Python 3.10–3.12 · Node.js 18+ for the optional npm launcher.
+**Development status:** **v1.4 stable (`v1.4.0`) is under development** · **Latest published v1.4 test build:** `v1.4.0a1` (alpha) · **Previous stable release:** `v1.3.1` · Python 3.10–3.12 · Node.js 18+ for the npm launcher.
 
-Locdex deliberately separates **the Agent** (repo understanding, decisions, permissions, tools, verification) from **the Model Runtime** (local model installation, backend execution, adaptive inference and provider adapters). Models are replaceable; the agent's safety and workflow are not delegated to the model.
+The **v1.4 architecture** deliberately separates **the Agent** (repo understanding, decisions, permissions, tools, verification) from **the Model Runtime** (local model installation, backend execution, adaptive inference and provider adapters). Models are replaceable; the agent's safety and workflow are not delegated to the model. The released `v1.4.0a1` prerelease tests this **same architecture** on the path to stable `v1.4.0`; it is **not a separate product generation**.
 
-**Start here:** [Local-model quickstart](docs/QUICKSTART_LOCAL_MODELS.md) · [Agent vs runtime architecture](#two-architectures-one-agent) · [Sponsor / funding roadmap](docs/FUNDING_AND_ROADMAP.md) · [LocdexBench plan](benchmarks/LOCDEXBENCH_DESIGN.md) · [Contribute](#development)
+**Start here:** [v1.4 stable development roadmap](docs/V1_4_STABLE_ROADMAP.md) · [Local-model quickstart](docs/QUICKSTART_LOCAL_MODELS.md) · [Agent vs runtime architecture](#two-architectural-layers-one-v14-release) · [Sponsor / funding roadmap](docs/FUNDING_AND_ROADMAP.md) · [LocdexBench plan](benchmarks/LOCDEXBENCH_DESIGN.md) · [Contribute](#development)
 
-> **Alpha channel:** `pip install "locdex==1.4.0a1"` or `npm install -g @locdex/cli@next`. Unversioned registry installs can still select the prior stable release.
+> **Release tracks:** `v1.3.1` is the previous **stable** version. `v1.4.0a1` is the published **v1.4 testing prerelease**, installable with `pip install "locdex==1.4.0a1"` or `npm install -g @locdex/cli@next`. **Stable `v1.4.0` is not released yet.** Both v1.4 builds belong to the same architecture; no architecture rename or split is implied.
 
 ## Install Locdex
 
-Use **one** route for the `1.4.0a1` alpha. Both routes install the same Python core:
+For testing the **v1.4 architecture while stable v1.4 is under development**, choose **one** prerelease installation route. Both install the same Python core:
 
 | Option | Command | Notes |
 | --- | --- | --- |
@@ -25,7 +25,7 @@ locdex --version
 
 **The npm package is a launcher, not a JavaScript rewrite of the agent.** Neither package installs a GGUF model automatically. For end-to-end Windows, macOS and Linux setup, see the **[local-model quickstart](docs/QUICKSTART_LOCAL_MODELS.md)**.
 
-> The alpha is on npm's `next` tag, not `latest`; an unpinned `pip install locdex` may select the earlier stable version.
+> The npm alpha uses the `next` dist-tag, not `latest`; normal unpinned installation may select the existing **v1.3 stable** release. The future stable v1.4 installer will be documented and published separately when its acceptance gates pass. See [v1.4 roadmap](docs/V1_4_STABLE_ROADMAP.md).
 
 ## First-time setup
 
@@ -388,7 +388,7 @@ locdex telemetry endpoint https://YOUR-DEPLOYED-WORKER.workers.dev/v1/events
 locdex telemetry flush
 ```
 
-## Two architectures, one agent
+## Two architectural layers, one v1.4 release
 
 The **Agent** and the **Model Runtime** are deliberately separate. The agent owns workspace permissions, file tools, repository reasoning and verification. The runtime supplies model responses; it does **not** authorize file edits, commands, Git operations or network access.
 
@@ -440,7 +440,9 @@ flowchart TB
 
 **Local-first is a policy, not a guarantee of quality on every machine.** When optional cloud escalation is enabled, the agent prepares a bounded locally collected evidence pack before paid inference and retains its same guarded tools and verification. Evidence packs may still contain task-relevant source code; consent and redaction remain important.
 
-**More detail:** [Architecture specification](ARCHITECTURE.md) · [Local-model quickstart](docs/QUICKSTART_LOCAL_MODELS.md) · [Benchmarking plan](benchmarks/LOCDEXBENCH_DESIGN.md).
+**More detail:** [Architecture specification](ARCHITECTURE.md) · [v1.4 stable development plan](docs/V1_4_STABLE_ROADMAP.md) · [Local-model quickstart](docs/QUICKSTART_LOCAL_MODELS.md) · [Benchmarking plan](benchmarks/LOCDEXBENCH_DESIGN.md).
+
+The two diagrams distinguish **software responsibilities**, not prerelease/stable architecture versions. The v1.4 prerelease and forthcoming v1.4 stable release share this design; stability work is about tested behavior, bug fixes, and acceptance criteria.
 
 ## Development
 
@@ -595,7 +597,7 @@ Cloud inference still requires an explicitly configured provider, a network-enab
 
 ## Public model qualification and benchmarks
 
-**LocdexBench is not shipped yet.** The next implementation milestone is a safely isolated, reproducible [five-task pilot with hidden grading](benchmarks/LOCDEXBENCH_DESIGN.md). See the [funding-linked milestone roadmap](docs/FUNDING_AND_ROADMAP.md). Public qualification probes are different and must not be presented as LocdexBench scores.
+**LocdexBench is not shipped yet.** It is an active engineering milestone for completing and validating **v1.4 stable**, not a distinct architecture release. The next implementation milestone is a safely isolated, reproducible [five-task pilot with hidden grading](benchmarks/LOCDEXBENCH_DESIGN.md). See the [v1.4 stable roadmap](docs/V1_4_STABLE_ROADMAP.md) and [funding-linked milestone roadmap](docs/FUNDING_AND_ROADMAP.md). Public qualification probes are different and must not be presented as LocdexBench scores.
 
 
 Locdex now supports **sanitized qualification exports**, separate from a full benchmark suite:

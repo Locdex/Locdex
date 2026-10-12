@@ -1,17 +1,22 @@
-# PyPI release procedure
+# Locdex v1.4 release procedure — stable in development
 
-## Distribution identity
+## Release status and package identity
+
+| Track | Version | State |
+| --- | --- | --- |
+| Prior stable | `v1.3.1` | Published |
+| v1.4 testing prerelease | `v1.4.0a1` / PyPI `locdex==1.4.0a1` / npm `@locdex/cli@1.4.0-alpha.1` | Published prerelease |
+| v1.4 stable target | `v1.4.0` / PyPI `locdex==1.4.0` / npm `@locdex/cli@1.4.0` | **Under development; not published** |
+
+The v1.4 prerelease and v1.4 stable target implement the **same architecture**. The alpha exists for testing, bug fixing and release qualification. This document records the prerelease procedure below; **do not repeat its alpha publication steps to create the future stable release**.
 
 - PyPI project: `locdex`
-- Existing public stable version: `1.3.1` (published before the current architecture work)
-- Next architecture preview: `1.4.0a1`
-- npm companion release: `@locdex/cli@1.4.0-alpha.1` (installs exactly `locdex==1.4.0a1`)
 - Canonical repository: `Locdex/Locdex`
 - Trusted Publisher workflow: `.github/workflows/pypi-release.yml`
 
-The preview is a prerelease: `pip install locdex` normally selects a stable version, whereas `pip install locdex==1.4.0a1` installs this preview. The npm wrapper pins the exact preview.
+Normal unpinned installation may select the previous stable version; use an explicit version when testing the v1.4 alpha. The npm prerelease must pin the corresponding PyPI prerelease. See [v1.4 stable release gates](V1_4_STABLE_ROADMAP.md).
 
-## Verification
+## v1.4.0a1 prerelease verification (historical)
 
 From a clean checkout of the intended release commit:
 
@@ -42,7 +47,7 @@ Before releasing, configure a GitHub Actions environment named `pypi` for the re
 
 No PyPI API key needs to be stored in GitHub or in the codebase. The PyPI publishing job requests a short-lived OIDC credential from GitHub Actions.
 
-## Release sequence
+## v1.4.0a1 prerelease publication steps (completed)
 
 1. Confirm the package source and Python/npm versions match; build both distribution formats; pass the full CI matrix.
 2. Merge the reviewed release commit, including `.github/workflows/pypi-release.yml`, into `main` without changing its intended version.
@@ -56,4 +61,15 @@ No PyPI API key needs to be stored in GitHub or in the codebase. The PyPI publis
    ```
 6. Once PyPI succeeds, publish the matching public npm prerelease with the `next` dist-tag; verify npm installs the managed Python version.
 
-Do not trigger the release event until the Trusted Publisher and environment are configured, the artifact validation workflow is green, and the maintainer has reviewed the release.
+The above v1.4.0a1 release was published and should remain historically accurate. Do not rerun a released tag to substitute new stable artifacts.
+
+## Next: stable v1.4.0 release (not yet published)
+
+1. Complete and document the [v1.4 stable acceptance gates](V1_4_STABLE_ROADMAP.md), using the prerelease for real-world testing.
+2. On a reviewed release commit, change `pyproject.toml` to `version = "1.4.0"` and change the npm wrapper package version to `1.4.0` plus its Python pin to `locdex==1.4.0`; update tests and changelog together.
+3. Verify clean installs, fresh wheel/source archives, CI, supported platforms, installation guides, and task-level agent behavior. Do not reuse the prerelease artifacts.
+4. Create a **new** Git tag `v1.4.0` and a **non-prerelease** GitHub Release once stable release approval is given. GitHub's PyPI Trusted Publishing workflow must verify the tag exactly matches `pyproject.toml`.
+5. Validate `pip install "locdex==1.4.0"` after PyPI publication; then publish `@locdex/cli@1.4.0` on npm as the stable `latest` channel after its independent acceptance tests. Never repoint `latest` at an alpha.
+6. Announce v1.4 stable only after the actual GitHub, PyPI and npm release records exist.
+
+The version bump to `1.4.0` is deliberately deferred; the repository's current `1.4.0a1` metadata must continue to identify the published testing build until stable release work is approved.

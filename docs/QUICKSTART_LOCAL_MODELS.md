@@ -1,6 +1,8 @@
-# Locdex local-model quickstart — v1.4.0a1
+# Locdex v1.4 local-model quickstart — stable version in development
 
-Get Locdex running **locally**, with no Ollama and no cloud-model API key. This is a release **alpha**. Local model downloads are explicit; package installation alone does not download models or install `llama-cpp-python`.
+**Version guide:** v1.3.1 is the previous stable release. Stable **v1.4.0 is under development**; the currently available **v1.4.0a1 prerelease** tests the *same* v1.4 architecture. The commands below intentionally install that alpha build until stable v1.4 is ready.
+
+Get Locdex running **locally**, with no Ollama and no cloud-model API key. Local model downloads are explicit; package installation alone does not download models or install `llama-cpp-python`. For the remaining stable release criteria, see [v1.4 development roadmap](V1_4_STABLE_ROADMAP.md).
 
 ## 1. Requirements
 
@@ -30,7 +32,7 @@ python -m pip install "locdex==1.4.0a1"
 locdex --version
 ```
 
-**npm prerelease (Windows/macOS/Linux)**
+**npm v1.4 prerelease testing (Windows/macOS/Linux)**
 
 ```bash
 npm install -g @locdex/cli@next --foreground-scripts
