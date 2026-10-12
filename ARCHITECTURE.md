@@ -1,4 +1,4 @@
-# Locdex Architecture v3.3
+# Locdex Architecture (v1.4.0a1 alpha · engine v3.3)
 
 Locdex is a local-first coding-agent runtime. The model is replaceable infrastructure; Locdex owns repository intelligence, context construction, security, routing, tools, verification, telemetry, and hardware policy.
 
@@ -37,12 +37,30 @@ Tool Engine + Verification Engine
 Local metrics + opt-in shared telemetry
 ```
 
+## Agent vs model runtime boundary
+
+The **agent architecture** owns session state, repository intelligence, context assembly, permissions, sandbox policy, tools, verification, rollback and routing. The **model runtime architecture** only owns the model execution boundary: local GGUF installation/backends and inference, or user-authorized cloud provider calls. Tool authorization never comes from model output alone.
+
+```text
+AGENT: user -> session -> policy -> repo/context -> agent/router -> guarded tools
+                                             ^                         |
+                                             +------ verifier/journal <-+
+                              |
+                              +---- model interface ----+
+                                                        |
+RUNTIME:                           local profiles -> hardware -> llama.cpp worker
+                                   OR configured cloud adapter (opt-in)
+                                                        |
+                                              model response -> agent
+```
+
+For a visually separated, component-level view, see [README: Two architectures, one agent](README.md#two-architectures-one-agent). For end-user installation, see [local-model quickstart](docs/QUICKSTART_LOCAL_MODELS.md).
+
 ## Local models
 
-- `qwen`: Qwen3.5 35B-A3B Q4_K_S, supported/default, 32 GB-class target.
-- `kimi`: Qwen3.5 9B Kimi-K3 Distilled Q4_K_M, experimental, ~16 GB-class target.
+Model metadata lives in `src/locdex/models/profiles.py`, not in the agent orchestration layer. The default supported 32 GB-class profile is `qwen` (Qwen3.5 35B-A3B Q4_K_S). Additional options include `smoke` (Qwen2.5-Coder 1.5B, development only), `qwen25-3b`, `qwen25-7b`, `qwen25-14b`, `kimi`, `deepseek-lite` and `qwen3-coder` with varying experimental/qualification statuses. Refer to `locdex model list` for current RAM guidance and installation state.
 
-The `kimi` key is intentionally preserved for the planned 9B Kimi-K3 distillation.
+The runtime detects hardware, installs compatible prebuilt llama.cpp backends when available, manages local GGUF files and uses an isolated killable worker for interactive local inference and qualification. Load/generation timeout estimation is adaptive and saved calibration metadata is local to the user's machine. Cloud inference is a separate opt-in provider adapter, not the local inference runtime.
 
 ## Repository Intelligence vs Context
 
@@ -79,12 +97,12 @@ Later learned artifacts are versioned, checksum-verified, run locally, and fall 
 
 ## Telemetry learning loop
 
-Shared telemetry is OFF by default.
+BASIC telemetry is enabled by default with a visible first-run notice and opt-out; **no network request occurs unless a real telemetry HTTPS endpoint is configured**. RESEARCH mode requires separate explicit opt-in. The code in `src/locdex/telemetry/settings.py` is the source of truth for consent defaults.
 
 Consent modes:
 
-- OFF — no shared telemetry.
-- BASIC — sanitized routing/outcome metadata only.
+- OFF — no telemetry uploads and no pending event queue.
+- BASIC — sanitized routing/outcome metadata only (default; endpoint must be configured to upload).
 - RESEARCH — separate explicit research consent; it does not silently trigger shadow-model evaluation.
 
 BASIC telemetry must not contain source code, prompts, model responses, diffs, filenames/paths, repository identity, branch identity, credentials, environment values, company/user identity, or persistent installation/device identifiers.

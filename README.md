@@ -1,33 +1,31 @@
 # Locdex
 
-Locdex is a local-first coding-agent runtime with replaceable local models, repository intelligence, bounded context, explicit permissions, verification, rollback, and optional cloud escalation.
+**An open-source, local-first coding agent: repository intelligence and verified code changes, with optional cloud-model escalation.**
+
+**Release:** `v1.4.0a1` (alpha) · **Engine architecture:** v3.3 · Python 3.10–3.12 · Node.js 18+ for the optional npm launcher.
+
+Locdex deliberately separates **the Agent** (repo understanding, decisions, permissions, tools, verification) from **the Model Runtime** (local model installation, backend execution, adaptive inference and provider adapters). Models are replaceable; the agent's safety and workflow are not delegated to the model.
+
+**Start here:** [Local-model quickstart](docs/QUICKSTART_LOCAL_MODELS.md) · [Agent vs runtime architecture](#two-architectures-one-agent) · [Sponsor / funding roadmap](docs/FUNDING_AND_ROADMAP.md) · [LocdexBench plan](benchmarks/LOCDEXBENCH_DESIGN.md) · [Contribute](#development)
+
+> **Alpha channel:** `pip install "locdex==1.4.0a1"` or `npm install -g @locdex/cli@next`. Unversioned registry installs can still select the prior stable release.
 
 ## Install Locdex
 
-Choose either npm or pip. They install the same Locdex Python core.
+Use **one** route for the `1.4.0a1` alpha. Both routes install the same Python core:
 
-### npm
+| Option | Command | Notes |
+| --- | --- | --- |
+| **Python / pip** | `python -m pip install "locdex==1.4.0a1"` | Recommended inside a Python 3.10–3.12 virtual environment |
+| **Node.js / npm** | `npm install -g @locdex/cli@next --foreground-scripts` | Requires Node.js 18+ and Python 3.10–3.12; creates its own managed Python environment |
 
 ```bash
-npm install -g @locdex/cli
 locdex --version
 ```
 
-The npm package is a lightweight launcher. It creates a Locdex-owned Python environment and forwards the `locdex` command to the Python runtime.
+**The npm package is a launcher, not a JavaScript rewrite of the agent.** Neither package installs a GGUF model automatically. For end-to-end Windows, macOS and Linux setup, see the **[local-model quickstart](docs/QUICKSTART_LOCAL_MODELS.md)**.
 
-Requirements for the first npm release:
-
-- Node.js 18+
-- Python 3.10, 3.11, or 3.12
-
-### pip
-
-```bash
-python -m pip install locdex
-locdex --version
-```
-
-> Registry installs work after the matching releases are published to npm and PyPI. If you are developing Locdex from this repository before release, use the **Development** section at the bottom of this README.
+> The alpha is on npm's `next` tag, not `latest`; an unpinned `pip install locdex` may select the earlier stable version.
 
 ## First-time setup
 
@@ -52,12 +50,15 @@ See models that fit different hardware tiers:
 locdex model list
 ```
 
-Install and select one explicitly:
+Install and select one explicitly (choose based on real RAM and hardware):
 
 ```bash
-locdex model install qwen25-7b
-locdex model use qwen25-7b
+locdex model install smoke
+locdex model use smoke
+locdex model qualify smoke --prompt-only
 ```
+
+The `smoke` model validates the installation; it is **not** recommended for serious coding tasks. On a machine with sufficient resources, `qwen25-7b` is a more useful qualification candidate. See [model selection guidance](docs/QUICKSTART_LOCAL_MODELS.md#3-pick-and-download-a-model).
 
 Then run Locdex inside a project:
 
@@ -126,7 +127,7 @@ Session: 7d6c8a13d4ef
 Repository: /workspace/project
 Model: qwen25-7b
 Permissions: ask
-Sandbox: workspace-write
+Sandbox: workspace-network
 
 locdex> Fix the refresh-token bug.
 ```
@@ -190,7 +191,7 @@ Sandbox modes:
 | `workspace-network` | writable | allowed | allowed subject to permissions |
 | `unrestricted` | native Locdex policy | allowed | allowed subject to permissions |
 
-The default is `workspace-write`.
+**New sessions default to `workspace-network`**, still subject to explicit permission approval. Previously saved sessions retain their selected sandbox. Use `workspace-write` to deny network access, including remote tools. Cloud inference stays disabled unless separately configured.
 
 Inspect the sandbox backend on your machine:
 
@@ -347,7 +348,7 @@ Inspect configured servers:
 locdex mcp list
 ```
 
-Locdex exposes MCP to the agent through two auditable tools: `mcp_list_tools` and `mcp_call`. MCP calls are classified as network/external actions: the default `workspace-write` sandbox blocks them. A user must opt into a network-enabled sandbox and normal permission approval still applies. The stdio server process is wrapped by the active OS sandbox backend when one is available.
+Locdex exposes MCP to the agent through two auditable tools: `mcp_list_tools` and `mcp_call`. MCP calls are classified as network/external actions. New sessions use the network-capable `workspace-network` sandbox, but normal permission approval still applies; switch to `workspace-write` to block these calls. No MCP server is installed or started without configuration. The stdio server process is wrapped by the active OS sandbox backend when one is available.
 
 ## Repository intelligence and context
 
@@ -387,35 +388,59 @@ locdex telemetry endpoint https://YOUR-DEPLOYED-WORKER.workers.dev/v1/events
 locdex telemetry flush
 ```
 
-## Architecture
+## Two architectures, one agent
 
-```text
-Interactive CLI / future IDE surfaces
-        ↓
-Session manager + event stream + checkpoints
-        ↓
-Permission policy
-        ↓
-Sandbox policy / OS sandbox backend
-        ↓
-Agent orchestrator
-        ↓
-Repository intelligence
-        ↓
-Context compiler / TaskState
-        ↓
-Execution planner + model router
-        ↓
-Local models / optional cloud providers
-        ↓
-Tool executor
-        ↓
-Change journal + verification
+The **Agent** and the **Model Runtime** are deliberately separate. The agent owns workspace permissions, file tools, repository reasoning and verification. The runtime supplies model responses; it does **not** authorize file edits, commands, Git operations or network access.
+
+### A. Agent architecture — *what Locdex does to your code*
+
+```mermaid
+flowchart TB
+    User["CLI / terminal session"] --> Session["Session state / steering / checkpoints"]
+    Session --> Policy["Permission decisions + sandbox policy"]
+    Policy --> Agent["Agent engine: understand → act → verify"]
+    Agent --> Intelligence["Repository intelligence: symbols, tests, Git state"]
+    Intelligence --> Context["Context compiler + durable task state"]
+    Context --> Route["Execution planner + local model router"]
+    Route --> ModelPort(("Model interface"))
+    ModelPort --> Agent
+    Agent --> Tools["Guarded tools: read, edit, command, tests, Git"]
+    Tools --> Verify["Verifier + change journal / rollback"]
+    Verify --> Agent
 ```
 
-Normal-user security belongs in the public Locdex repository. Enterprise implementations can extend the public contracts with organizational policy, identity, audit, secret-management, sandbox, and inference-control integrations.
+**Owns:** repository retrieval, bounded context, tool-call permissions, workspace boundaries, model/task routing, test preservation, verification, history and rollback.
 
-See `ARCHITECTURE.md` and `BUILD_SPEC.md`.
+### B. Model runtime architecture — *how Locdex gets model decisions*
+
+```mermaid
+flowchart TB
+    ModelPort(("Model interface from agent")) --> Select{"Execution mode / policy"}
+    Select --> Local["Local model manager + GGUF profiles"]
+    Local --> Hardware["Hardware probe + runtime/backend selector"]
+    Hardware --> Worker["Isolated llama.cpp inference worker"]
+    Worker --> Output["Model response"]
+    Select -->|"Only when explicitly configured"| Cloud["Cloud provider adapter / bounded context gateway"]
+    Cloud --> Providers["OpenAI, Anthropic, Gemini, Groq, OpenRouter, DeepSeek, Together, Mistral, custom"]
+    Providers --> Output
+    Output --> ModelPort
+```
+
+**Owns:** model discovery/downloads, hardware and prebuilt backend checks, bounded model-loading/generation timeouts, local speed calibration, native inference lifecycle and optional cloud API requests.
+
+### The boundary that matters
+
+| Agent layer | Model runtime layer |
+| --- | --- |
+| Understands repo and selects task evidence | Generates model completions from prepared context |
+| Decides **whether** a tool action is permitted | Cannot grant tool permission or escape sandbox policy |
+| Validates diffs and runs the verifier | Does not claim a coding task passed merely by generating text |
+| Handles fallback, rollback and result attribution | Provides local or configured cloud responses; measures inference behavior |
+| Can operate with different model backends | Can change without rewriting the agent |
+
+**Local-first is a policy, not a guarantee of quality on every machine.** When optional cloud escalation is enabled, the agent prepares a bounded locally collected evidence pack before paid inference and retains its same guarded tools and verification. Evidence packs may still contain task-relevant source code; consent and redaction remain important.
+
+**More detail:** [Architecture specification](ARCHITECTURE.md) · [Local-model quickstart](docs/QUICKSTART_LOCAL_MODELS.md) · [Benchmarking plan](benchmarks/LOCDEXBENCH_DESIGN.md).
 
 ## Development
 
@@ -495,7 +520,7 @@ Active interactive tasks render a live status header **above** the input rather 
   Choice ›
 ```
 
-In interactive mode, llama.cpp model inference now runs in a **separate child process**, reused for the task. A model-load/decision call exceeding `LOCDEX_INFERENCE_TIMEOUT_SECONDS` (default **90 seconds**) terminates that child, raises a visible timeout, and rolls back Locdex-owned edits before returning to the input. Cancellation checks happen during model inference rather than waiting until the next agent step. Users on slower hardware can set the environment variable to a larger limit (20–600 seconds). The **12-step cap is separate**: a step cap by itself is not a wall-clock deadline. The isolated inference worker applies to interactive local runs; other execution paths may still require their own timeout policies. Long-running non-model tools and the operating system may have separate limits.
+In interactive mode, llama.cpp model inference runs in a **separate child process**, reused for the task. A model-load or generation call exceeding its **adaptive per-phase deadline** terminates that child, raises a visible timeout and rolls back Locdex-owned edits before returning to the input. Cancellation checks happen during model inference rather than waiting until the next agent step. Users on slower hardware can set the environment variable to a larger limit (20–600 seconds). The **12-step cap is separate**: a step cap by itself is not a wall-clock deadline. The isolated inference worker applies to interactive local runs; other execution paths may still require their own timeout policies. Long-running non-model tools and the operating system may have separate limits.
 
 To change the inference timeout in PowerShell before running Locdex:
 
@@ -566,9 +591,12 @@ For Gemini, Groq, OpenRouter, DeepSeek, Together, and Mistral change the provide
 
 The existing `LOCDEX_CLOUD_API_KEY` environment variable overrides provider-specific key variables for backwards compatibility. Always remove the old variable before switching providers, or it may override the intended key. Environment variables apply to the current terminal session. Never commit keys or put them in a benchmark artifact.
 
-Cloud inference still requires the user to opt into the `workspace-network` sandbox. The Cloudflare telemetry endpoint is **not** an inference provider.
+Cloud inference still requires an explicitly configured provider, a network-enabled sandbox and normal permission authorization. The Cloudflare telemetry endpoint is **not** an inference provider.
 
 ## Public model qualification and benchmarks
+
+**LocdexBench is not shipped yet.** The next implementation milestone is a safely isolated, reproducible [five-task pilot with hidden grading](benchmarks/LOCDEXBENCH_DESIGN.md). See the [funding-linked milestone roadmap](docs/FUNDING_AND_ROADMAP.md). Public qualification probes are different and must not be presented as LocdexBench scores.
+
 
 Locdex now supports **sanitized qualification exports**, separate from a full benchmark suite:
 
