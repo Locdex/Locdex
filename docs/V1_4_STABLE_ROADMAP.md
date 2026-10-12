@@ -8,7 +8,7 @@
 | **v1.4.0a1** | **Published prerelease** | Test the v1.4 architecture, collect reproducible bugs and compatibility evidence |
 | **v1.4.0** | **Under development (not yet published)** | Complete the v1.4 stabilization and validation process and then ship the full stable release |
 
-The internal engine architecture documentation may reference v3.3 as its **design revision**. That is **not** the product's release version and must not be advertised as a separate released architecture.
+**Naming rule:** All public product and architecture documentation calls this release family **Locdex v1.4**. Internal component-specific schemas such as `rules-v0` and benchmark manifest versions remain separately versioned, but there is no competing product architecture number.
 
 ## What is included in the v1.4 architecture
 

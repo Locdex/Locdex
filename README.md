@@ -392,38 +392,38 @@ locdex telemetry flush
 
 The **Agent** and the **Model Runtime** are deliberately separate. The agent owns workspace permissions, file tools, repository reasoning and verification. The runtime supplies model responses; it does **not** authorize file edits, commands, Git operations or network access.
 
-### A. Agent architecture — *what Locdex does to your code*
+### A. Agent architecture — what Locdex does to your code
 
 ```mermaid
-flowchart TB
-    User["CLI / terminal session"] --> Session["Session state / steering / checkpoints"]
-    Session --> Policy["Permission decisions + sandbox policy"]
-    Policy --> Agent["Agent engine: understand → act → verify"]
-    Agent --> Intelligence["Repository intelligence: symbols, tests, Git state"]
-    Intelligence --> Context["Context compiler + durable task state"]
-    Context --> Route["Execution planner + local model router"]
-    Route --> ModelPort(("Model interface"))
-    ModelPort --> Agent
-    Agent --> Tools["Guarded tools: read, edit, command, tests, Git"]
-    Tools --> Verify["Verifier + change journal / rollback"]
-    Verify --> Agent
+flowchart TD
+    UI[Developer and CLI] --> SESSION[Sessions and checkpoints]
+    SESSION --> POLICY[Permissions and sandbox]
+    POLICY --> ENGINE[Agent controller]
+    ENGINE --> REPO[Repository intelligence]
+    REPO --> CONTEXT[Context compiler and task state]
+    CONTEXT --> ROUTER[Execution planner and model router]
+    ROUTER --> MODEL[Model interface]
+    MODEL --> ENGINE
+    ENGINE --> TOOLS[Guarded code and Git tools]
+    TOOLS --> VERIFY[Verification and change journal]
+    VERIFY --> ENGINE
 ```
 
 **Owns:** repository retrieval, bounded context, tool-call permissions, workspace boundaries, model/task routing, test preservation, verification, history and rollback.
 
-### B. Model runtime architecture — *how Locdex gets model decisions*
+The diagram uses a compact GitHub-compatible Mermaid flowchart; the equivalent steps are also described in the table below.
+
+### B. Model runtime architecture — how Locdex gets model decisions
 
 ```mermaid
-flowchart TB
-    ModelPort(("Model interface from agent")) --> Select{"Execution mode / policy"}
-    Select --> Local["Local model manager + GGUF profiles"]
-    Local --> Hardware["Hardware probe + runtime/backend selector"]
-    Hardware --> Worker["Isolated llama.cpp inference worker"]
-    Worker --> Output["Model response"]
-    Select -->|"Only when explicitly configured"| Cloud["Cloud provider adapter / bounded context gateway"]
-    Cloud --> Providers["OpenAI, Anthropic, Gemini, Groq, OpenRouter, DeepSeek, Together, Mistral, custom"]
-    Providers --> Output
-    Output --> ModelPort
+flowchart TD
+    REQUEST[Model request from agent] --> POLICY[Execution policy]
+    POLICY --> LOCAL[Local GGUF model manager]
+    LOCAL --> HARDWARE[Hardware and backend selection]
+    HARDWARE --> WORKER[Isolated llama cpp worker]
+    WORKER --> RESPONSE[Model response to agent]
+    POLICY --> CLOUD[Optional configured cloud provider]
+    CLOUD --> RESPONSE
 ```
 
 **Owns:** model discovery/downloads, hardware and prebuilt backend checks, bounded model-loading/generation timeouts, local speed calibration, native inference lifecycle and optional cloud API requests.

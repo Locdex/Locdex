@@ -1,4 +1,6 @@
-# Locdex v3.3 Build Specification
+# Locdex v1.4 Build Specification — Stable Release in Development
+
+The released `v1.4.0a1` alpha is the test build of this same v1.4 architecture. The last stable release is `v1.3.1`; stable `v1.4.0` is not yet published.
 
 This document is normative for the public Locdex repository.
 
@@ -114,7 +116,7 @@ Preflight MUST compile source/tests, strictly import all package modules, collec
 Only after the package gate is green should hardware/runtime, Qwen, Kimi, agent tools, Git, cloud providers, telemetry backend, LocdexBench, and OS/hardware matrix qualification begin.
 
 
-## v3.3 interaction, sandbox, orchestration, escalation
+## v1.4 interaction, sandbox, orchestration and escalation
 
 - `locdex` MUST remain the primary persistent interactive interface; `locdex task` remains the headless primitive.
 - The interactive console MUST keep stdin ownership outside the agent worker so steering, cancellation, and approvals can coexist.

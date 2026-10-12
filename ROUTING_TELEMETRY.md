@@ -1,4 +1,6 @@
-# Locdex Routing + Telemetry v0
+# Locdex v1.4 — Routing and Telemetry
+
+The `rules-v0` routing implementation and v1 event schema have their own versions; these are not Locdex product release numbers. Stable v1.4 is under development and `v1.4.0a1` is its published testing prerelease.
 
 ## What is implemented now
 
@@ -60,7 +62,7 @@ locdex telemetry disable
 ```
 
 
-## v3.3 local-first escalation
+## v1.4 local-first escalation
 
 A coding task now has an execution wrapper around the AgentEngine. The local selected model attempts the task first. An `escalate`, `incomplete`, runtime-error, or failed-verification result may be reconsidered only when:
 
@@ -76,7 +78,7 @@ Inspect configuration without revealing the key:
 locdex cloud status
 ```
 
-## v3.3 outcome recording and offline training
+## v1.4 outcome recording and offline training
 
 When telemetry is opted in, local and cloud attempts use the same allow-listed `routing_outcome` event. Cost/token/latency fields are populated when a provider exposes them. Telemetry failure must not become an agent failure.
 

@@ -1,4 +1,6 @@
-# Locdex Setup Guide — v3.3
+# Locdex v1.4 Setup Guide — Stable Release in Development
+
+The last stable release is `v1.3.1`. Use the published `v1.4.0a1` prerelease to test the same v1.4 architecture while stable `v1.4.0` is under development. See [local-model quickstart](docs/QUICKSTART_LOCAL_MODELS.md) for public alpha installations.
 
 ## 1. Development environment
 
@@ -109,7 +111,7 @@ This is offline training. Hands-on model/user qualification is intentionally a s
 Inside `locdex`, active tasks now show an animated status bar and real-time tool-action log while typing or steering remains available. The bar counts actual tool completions; model thinking is not exposed as fake reasoning or a percentage. Run `locdex model install qwen25-7b` for real byte-based model download and checksum progress, or `locdex runtime install --backend auto` for pip wheel transfer percentages and runtime validation. npm installation can hide lifecycle logs unless `--foreground-scripts` is passed:
 
 ```powershell
-npm install -g @locdex/cli --foreground-scripts --loglevel=info
+npm install -g @locdex/cli@next --foreground-scripts --loglevel=info
 ```
 
 
@@ -122,12 +124,13 @@ PowerShell: run `locdex` inside your project. Enter `exit`, `quit`, `/exit`, or 
 Pull the latest source and reinstall the development build, then launch from the test project. The activity and approval panels appear above the text input. A short permission question and labeled choices must be visible together; `y` allows once and `a` allows similar actions for the session. The interactive model process uses independently calculated load/generation deadlines based on model size, hardware capacity and locally measured inference speed. Timeouts terminate that process and produce a recoverable failure. Cloud fallback requires configured inference credentials and the `workspace-network` sandbox; telemetry credentials alone cannot provide cloud inference.
 
 ```powershell
-cd C:\Users\Ade\Documents\Repositories\locdex\Locdex
-git pull origin architecture-v3.2-ready
+cd C:\path\to\Locdex
+git switch main
+git pull --ff-only origin main
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
 python scripts/preflight.py
-cd C:\Users\Ade\Documents\locdex-agent-test
+cd C:\path\to\test-project
 locdex
 ```
 
