@@ -56,7 +56,7 @@ RUNTIME:                           local profiles -> hardware -> llama.cpp worke
                                               model response -> agent
 ```
 
-For a visually separated, component-level view, see [README: Two architectures, one agent](README.md#two-architectures-one-agent). For end-user installation, see [local-model quickstart](docs/QUICKSTART_LOCAL_MODELS.md).
+For a visually separated, component-level view, see [README: Two architectural layers, one v1.4 release](README.md#two-architectural-layers-one-v14-release). For end-user installation, see [local-model quickstart](docs/QUICKSTART_LOCAL_MODELS.md).
 
 ## Local models
 
@@ -159,7 +159,7 @@ Enterprise implementation code is not in this repository. The OSS repo contains 
 The private package depends on public Locdex; public Locdex never depends on the private package.
 
 
-## v3.3 execution architecture
+## v1.4 execution architecture
 
 ### Interactive console
 

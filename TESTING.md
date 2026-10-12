@@ -1,4 +1,6 @@
-# Locdex Testing
+# Locdex v1.4 Testing — Stable Release in Development
+
+`v1.3.1` is the previous stable release; `v1.4.0a1` is a published alpha of the same v1.4 architecture being tested for stable `v1.4.0`.
 
 ## Stage 0 — source/package gate
 
@@ -44,7 +46,7 @@ Runtime/model, tool execution, Git, provider APIs, benchmarks, and platform qual
 
 Before enabling a production telemetry endpoint:
 
-- prove telemetry is disabled by default;
+- prove BASIC telemetry displays a first-run notice and allows immediate opt-out, and RESEARCH remains opt-in;
 - prove no endpoint means no network call;
 - fuzz unknown fields and verify fail-closed rejection;
 - inspect `locdex telemetry preview` for forbidden data;
@@ -57,7 +59,7 @@ Before enabling a production telemetry endpoint:
 A learned router may only replace `rules-v0` after it beats or matches the current router on held-out quality while meeting cost/privacy regressions defined for the release.
 
 
-## v3.3 automated coverage
+## v1.4 automated coverage
 
 The automated gate now additionally covers:
 
