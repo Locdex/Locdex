@@ -1,6 +1,6 @@
 # LocdexBench: proposal and v0 implementation plan
 
-**Status: proposed, not yet implemented.** Locdex `model qualify` is a tiny runtime/agent acceptance probe. It must never be renamed or advertised as a LocdexBench score. This document defines the first genuinely comparative evaluation.
+**Status: proposed, not yet implemented, as part of v1.4 stable development.** Stable v1.3.1 is the previous release; v1.4.0a1 is a testing prerelease of the same v1.4 architecture that will underpin stable v1.4.0. Locdex `model qualify` is a tiny runtime/agent acceptance probe. It must never be renamed or advertised as a LocdexBench score. This document defines the first genuinely comparative evaluation.
 
 ## The question
 

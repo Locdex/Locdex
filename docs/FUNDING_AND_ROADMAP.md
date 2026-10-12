@@ -1,6 +1,6 @@
-# Support Locdex: funding and engineering milestones
+# Support Locdex v1.4 stable development — funding and engineering milestones
 
-Locdex is an open-source, local-first coding-agent project. Sponsorship helps fund maintainers' engineering time, reproducible evaluations, documentation, CI, and—in later phases—representative test hardware. Funding does not buy access to private source code or influence security findings and published benchmark results.
+Locdex is an open-source, local-first coding-agent project. **The development target is the stable v1.4.0 release.** Stable v1.3.1 is already published; v1.4.0a1 is the public testing prerelease of that *same* v1.4 architecture, not a separate architectural version. Sponsorship helps fund maintainers' engineering time, reproducible evaluations, documentation, CI, and—in later phases—representative test hardware. Funding does not buy access to private source code or influence security findings and published benchmark results.
 
 > **Status:** Proposed sponsorship tiers and funding targets; **not** active payment tiers or guaranteed deadlines. GitHub payment tiers are created on an approved GitHub Sponsors profile, not in `.github/FUNDING.yml`. The funding configuration references the maintainer GitHub account (`bandojayy`); until that account has an approved Sponsors profile and the repository's **Sponsorships** feature is enabled, this file alone does not activate payments. Organization sponsorships could replace the maintainer link later.
 
@@ -29,10 +29,12 @@ Illustrative **sustained monthly** funding thresholds; progress is counted from 
 
 Funding may require sustained support over multiple months; these thresholds are planning targets, not linear cost estimates. If funding stays below target, the team can still work on milestones as time permits. Public status updates should report *work completed, blockers, expenses by category, and next acceptance criteria*, not fabricated performance gains.
 
-## Immediate roadmap (unfunded work can still proceed)
+## v1.4 stable development roadmap (unfunded work can still proceed)
+
+The M0–M3 funding milestones below support the **single v1.4 stabilization effort**; they are not separate releases. A detailed checklist distinguishing v1.4 alpha, stable target and release gates is in [V1_4_STABLE_ROADMAP.md](V1_4_STABLE_ROADMAP.md).
 
 **M0 — release reliability and local-model onboarding**
-- Keep PyPI/npm versions in sync and maintain alpha release validation.
+- Keep PyPI/npm prerelease versions in sync while the public v1.4.0a1 test build is evaluated; prepare matching final **v1.4.0 stable** packages only when release gates pass.
 - One reliable quickstart for CPU, constrained-memory systems, and standard developer machines.
 - Runtime failures should have actionable diagnostics and test coverage.
 
@@ -52,7 +54,7 @@ Funding may require sustained support over multiple months; these thresholds are
 - Measure quality/latency/cost trade-offs and router regret; publish model/backend/hardware context.
 - Add regression gates for privacy, protected tests, rollback and safe cancellation.
 
-The benchmark design is in [`benchmarks/LOCDEXBENCH_DESIGN.md`](../benchmarks/LOCDEXBENCH_DESIGN.md). This file states *planned* work; it does not claim LocdexBench or any score has shipped.
+The benchmark design is in [`benchmarks/LOCDEXBENCH_DESIGN.md`](../benchmarks/LOCDEXBENCH_DESIGN.md). This file states *planned* work toward **stable v1.4**; it does not claim LocdexBench, any score, or stable v1.4 has shipped.
 
 ## Configure GitHub Sponsors
 

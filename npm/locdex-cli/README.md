@@ -2,10 +2,12 @@
 
 npm bootstrapper and launcher for the Python Locdex coding-agent runtime.
 
+**Release tracks:** Locdex **v1.4.0 stable is under development**. `@locdex/cli@1.4.0-alpha.1` is the published v1.4 testing prerelease; it uses the **same architecture** planned for stable `@locdex/cli@1.4.0`. The previous stable Locdex release is v1.3.1. Do not interpret the alpha as a different architecture, or assume the stable npm package has shipped.
+
 ## Install
 
 ```bash
-npm install -g @locdex/cli
+npm install -g @locdex/cli@next
 locdex --version
 locdex model list
 ```
@@ -20,14 +22,14 @@ The npm package creates a Locdex-owned Python virtual environment and installs t
 Python discovery can be overridden:
 
 ```bash
-LOCDEX_PYTHON=/path/to/python npm install -g @locdex/cli
+LOCDEX_PYTHON=/path/to/python npm install -g @locdex/cli@next
 ```
 
 On Windows PowerShell:
 
 ```powershell
 $env:LOCDEX_PYTHON = "C:\Python311\python.exe"
-npm install -g @locdex/cli
+npm install -g @locdex/cli@next
 ```
 
 ## Runtime and models
@@ -65,13 +67,13 @@ The npm wrapper and Python package versions should be released together.
 npm hides some lifecycle-script output by default. For full stage messages and pip's real download percentages, install in a foreground terminal:
 
 ```powershell
-npm install -g @locdex/cli --foreground-scripts --loglevel=info
+npm install -g @locdex/cli@next --foreground-scripts --loglevel=info
 ```
 
 Locdex reports stages for Python environment creation, Python package installation, and CLI verification. Percentages are shown for wheel transfers only when pip knows the total bytes; we do not synthesize a misleading total percentage for environment setup.
 
 
-## Registry release checklist
+## v1.4 prerelease registry checklist (completed); stable v1.4.0 remains pending
 
 The scoped package is published under the `@locdex` npm organization. The organization must be created in npm's dashboard by an authorized owner; GitHub organization membership alone does not grant npm ownership.
 

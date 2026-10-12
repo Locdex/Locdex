@@ -1,4 +1,6 @@
-# Locdex Architecture (v1.4.0a1 alpha · engine v3.3)
+# Locdex v1.4 Architecture — Stable Release in Development
+
+**Release status:** The existing stable release is **v1.3.1**. The published **v1.4.0a1** prerelease is a testing build of this **same v1.4 architecture**. Stable **v1.4.0** is still under development; it is not yet shipped. See [v1.4 release gates](docs/V1_4_STABLE_ROADMAP.md).
 
 Locdex is a local-first coding-agent runtime. The model is replaceable infrastructure; Locdex owns repository intelligence, context construction, security, routing, tools, verification, telemetry, and hardware policy.
 
@@ -39,7 +41,7 @@ Local metrics + opt-in shared telemetry
 
 ## Agent vs model runtime boundary
 
-The **agent architecture** owns session state, repository intelligence, context assembly, permissions, sandbox policy, tools, verification, rollback and routing. The **model runtime architecture** only owns the model execution boundary: local GGUF installation/backends and inference, or user-authorized cloud provider calls. Tool authorization never comes from model output alone.
+These are **two internal layers of the v1.4 architecture**, not a v1.4 alpha versus stable split. The **agent architecture** owns session state, repository intelligence, context assembly, permissions, sandbox policy, tools, verification, rollback and routing. The **model runtime architecture** only owns the model execution boundary: local GGUF installation/backends and inference, or user-authorized cloud provider calls. Tool authorization never comes from model output alone.
 
 ```text
 AGENT: user -> session -> policy -> repo/context -> agent/router -> guarded tools
