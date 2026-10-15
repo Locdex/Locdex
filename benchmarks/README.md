@@ -6,7 +6,7 @@ The `benchmarks/` directory contains versioned evaluation protocols and reviewed
 
 **Qualification v1** is an installation/runtime acceptance check consisting of a fixed-output prompt and one bounded calculator-repair task. It measures whether a model/runtime can respond, invoke tools, preserve tests, and complete verification on a small fixture. It does not establish coding ability across languages, repositories, or task families. No aggregate performance claims follow from this probe.
 
-**LocdexBench** is an evaluation workstream for v1.4 stable development. The [evaluation protocol](LOCDEXBENCH_DESIGN.md) covers task fixtures, execution isolation, independent grading, result attribution and reporting. A first **owned Python test fixture, strict manifest validator and reference-control check** are available. A sandboxed agent execution runner, comparative suite and public leaderboard are **not yet available**; no scores have been published.
+**LocdexBench** is an evaluation workstream for v1.4 stable development. The [evaluation protocol](LOCDEXBENCH_DESIGN.md) covers task fixtures, execution isolation, independent grading, result attribution and reporting. A first **owned Python test fixture, strict manifest validator and reference-control check** are available. An **experimental Docker-only local trial runner** is available at [LOCAL_RUNNER.md](LOCAL_RUNNER.md), but live model qualification, a multi-task comparative suite and public leaderboard are **not yet available**; no scores have been published.
 
 ## LocdexBench v0 — audited fixture controls
 
@@ -19,7 +19,7 @@ python -m pytest tests/test_benchmark_v0.py
 
 The commands above run *only a reviewed, repository-owned fixture* on the CI host. **They are not a general benchmarking runner, model evaluation, or a safe way to execute downloaded repositories.** The validator fails closed on manifest path traversal, unexpected commands, additional write scopes, unsupported fields, changed pinned fixtures and missing external graders.
 
-The next implementation stage is a **container-isolated, disposable agent runner** which enforces network denial for local-only trials, mounts neither grader nor credentials into agent workspaces, enforces a wall-clock deadline and grades an immutable candidate snapshot separately. Its security guarantees must be tested before any model-produced code or third-party repository is executed. See [Issue #15](https://github.com/Locdex/Locdex/issues/15) and the [evaluation protocol](LOCDEXBENCH_DESIGN.md).
+A first **experimental local-only Docker runner** now enforces a network-disabled agent container, separate grading container, protected-file verification and bounded metadata output. See [LOCAL_RUNNER.md](LOCAL_RUNNER.md) for prerequisites and limitations. The live GGUF execution path has not been certified on representative hardware. Cloud/hybrid comparisons and full benchmark reporting are pending. See [Issue #15](https://github.com/Locdex/Locdex/issues/15).
 
 ## Repository layout
 

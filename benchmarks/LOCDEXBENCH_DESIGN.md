@@ -1,6 +1,6 @@
 # LocdexBench — Evaluation Protocol and Implementation Roadmap
 
-**Status:** LocdexBench is in development as part of v1.4 stable validation; comparative results have not been published. The first repository-owned Python task, validated manifest, pinned baseline, held-out grader and reference controls now have an implementation. A safe model-driven runner and comparative suite remain outstanding. The existing `locdex model qualify` command provides runtime and single-fixture acceptance checks rather than benchmark scores. The v1.4.0a1 prerelease and planned v1.4.0 stable release share the same architecture.
+**Status:** LocdexBench is in development as part of v1.4 stable validation; comparative results have not been published. The first repository-owned Python task, validated manifest, pinned baseline, held-out grader and reference controls now have an implementation. An experimental Docker-only local agent runner is implemented; its live GGUF path and full comparative suite remain unverified. The existing `locdex model qualify` command provides runtime and single-fixture acceptance checks rather than benchmark scores. The v1.4.0a1 prerelease and planned v1.4.0 stable release share the same architecture.
 
 ## The question
 
@@ -116,7 +116,7 @@ Report failures, exclusions and censored timeouts. Disclose whether a run is col
 | **3. Trials and reporting** | 3 repeated trials per task/model/mode; JSONL runs; grouped summary | Failed and timed-out trials counted; zero sensitive source in publishable output |
 | **4. Routing evidence** | Paired local/cloud/hybrid dataset; cost/quality/latency tradeoff dashboard | Router compared to actual alternatives and baseline, not just selected-route telemetry |
 
-The initial implementation includes a strict task manifest, a seeded Python defect fixture, externally stored grader and verified reference/negative controls. **The isolated agent runner remains pending.** Comparative reporting is deferred until isolation, reproducibility and multi-task coverage criteria are met.
+The initial implementation includes a strict task manifest, a seeded Python defect fixture, externally stored grader and verified reference/negative controls. **An experimental Docker-only local runner is available**; see [LOCAL_RUNNER.md](LOCAL_RUNNER.md). Full hardware validation and general comparative evaluation are pending. Comparative reporting is deferred until isolation, reproducibility and multi-task coverage criteria are met.
 
 ## Funding and ownership
 

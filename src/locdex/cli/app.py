@@ -20,6 +20,7 @@ from ..models import (
 )
 from ..qualification import qualify_model
 from ..benchmark.publish import export_qualification, summarize_directory
+from ..benchmark.isolated_runner import BenchmarkRunError, run_local_trial
 from ..providers.openai_compatible import CloudConfig, available_providers
 from ..routing.execution import execute_with_escalation
 from ..sandbox import SandboxMode, detect_sandbox_capabilities, profile_for_mode
@@ -126,6 +127,13 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark_export.add_argument("--output", required=True)
     benchmark_summary = benchmark_sub.add_parser("summary", help="Summarize qualified records (not full coding benchmark scores).")
     benchmark_summary.add_argument("--dir", default="benchmarks/results")
+    benchmark_local = benchmark_sub.add_parser("run-local", help="Run a pinned LocdexBench task in isolated Docker containers (local GGUF only).")
+    benchmark_local.add_argument("--manifest", required=True)
+    benchmark_local.add_argument("--repo", default=".")
+    benchmark_local.add_argument("--image", required=True, help="Preinstalled Docker image pinned by sha256 digest or ID.")
+    benchmark_local.add_argument("--model", choices=sorted(MODEL_PROFILES), required=True)
+    benchmark_local.add_argument("--model-path", required=True, help="Local GGUF file mounted read-only in the agent container.")
+    benchmark_local.add_argument("--output", help="Optional allowlisted metadata-only JSON result path.")
 
     sandbox_cmd = sub.add_parser("sandbox", help="Inspect Locdex sandbox capabilities and modes.")
     sandbox_sub = sandbox_cmd.add_subparsers(dest="sandbox_action", required=True)
@@ -384,10 +392,18 @@ def cli(argv: list[str] | None = None) -> int:
         try:
             if args.benchmark_action == "export":
                 _print_json(export_qualification(args.input, args.output))
-            else:
+            elif args.benchmark_action == "summary":
                 _print_json(summarize_directory(args.dir))
+            elif args.benchmark_action == "run-local":
+                _print_json(run_local_trial(
+                    manifest_path=args.manifest, repo_root=args.repo,
+                    image=args.image, model_key=args.model,
+                    model_path=args.model_path, output_path=args.output,
+                ))
+            else:
+                return 2
             return 0
-        except (ValueError, OSError, json.JSONDecodeError) as exc:
+        except (BenchmarkRunError, ValueError, OSError, json.JSONDecodeError) as exc:
             print(f"Locdex benchmark error: {exc}")
             return 1
 
