@@ -107,7 +107,8 @@ def validate_agent_changes(
     def files(directory: Path) -> dict[str, bytes]:
         return {
             p.relative_to(directory).as_posix(): p.read_bytes()
-            for p in directory.rglob("*") if p.is_file()
+            for p in directory.rglob("*")
+            if p.is_file() and ".git" not in p.relative_to(directory).parts
         }
     original = files(initial)
     updated = files(final)
