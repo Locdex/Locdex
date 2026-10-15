@@ -2,21 +2,72 @@ name: CI
 
 on:
   push:
-    branches:
-      - architecture-v3.2-ready
+    branches: [main]
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   preflight:
-    runs-on: ubuntu-latest
+    name: preflight ${{ matrix.os }} Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        include:
+          - os: ubuntu-latest
+            python-version: "3.10"
+          - os: ubuntu-latest
+            python-version: "3.11"
+          - os: ubuntu-latest
+            python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.11"
+          - os: macos-latest
+            python-version: "3.11"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e ".[dev]"
       - run: python scripts/preflight.py
+
+  npm-bootstrap:
+    name: npm bootstrap ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Validate and pack npm launcher
+        working-directory: npm/locdex-cli
+        run: |
+          npm run check
+          npm pack --dry-run --ignore-scripts
+      - name: Bootstrap from local Python source
+        working-directory: npm/locdex-cli
+        env:
+          LOCDEX_PYTHON_PACKAGE: ${{ github.workspace }}
+          LOCDEX_NPM_RUNTIME_DIR: ${{ runner.temp }}/locdex-npm-test
+        run: |
+          node scripts/install.js
+          node bin/locdex.js --version
+          node bin/locdex.js model list

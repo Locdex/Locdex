@@ -1,6 +1,6 @@
 # LocdexBench — Evaluation Protocol and Implementation Roadmap
 
-**Status:** LocdexBench is in development as part of v1.4 stable validation; comparative results have not been published. The existing `locdex model qualify` command provides runtime and single-fixture acceptance checks rather than benchmark scores. The v1.4.0a1 prerelease and planned v1.4.0 stable release share the same architecture.
+**Status:** LocdexBench is in development as part of v1.4 stable validation; comparative results have not been published. The first repository-owned Python task, validated manifest, pinned baseline, held-out grader and reference controls now have an implementation. A safe model-driven runner and comparative suite remain outstanding. The existing `locdex model qualify` command provides runtime and single-fixture acceptance checks rather than benchmark scores. The v1.4.0a1 prerelease and planned v1.4.0 stable release share the same architecture.
 
 ## The question
 
@@ -48,7 +48,7 @@ limits:
   network: false
 ```
 
-The example is a schema sketch, **not an executable or graded task**. Before first runner implementation, freeze a machine-validatable v0 schema, allowed commands and a fixture licensing policy. Never let an agent see or edit held-out grader files.
+The example illustrates the intended broader manifest format rather than an executable task. The initial pilot uses the stricter implemented [`tasks/py-arithmetic-edge-001.yaml`](tasks/py-arithmetic-edge-001.yaml) schema: a pinned Git `base_commit`, explicit external `reference_file` and `negative_file`, a fixed audited unittest command, and an exact allowed-write list. The first fixture's host-side controls are restricted to reviewed project-owned source. Before the general runner is enabled, prohibit access to grader and reference files from an agent workspace.
 
 ## Runner pipeline and trust boundaries
 
@@ -116,7 +116,7 @@ Report failures, exclusions and censored timeouts. Disclose whether a run is col
 | **3. Trials and reporting** | 3 repeated trials per task/model/mode; JSONL runs; grouped summary | Failed and timed-out trials counted; zero sensitive source in publishable output |
 | **4. Routing evidence** | Paired local/cloud/hybrid dataset; cost/quality/latency tradeoff dashboard | Router compared to actual alternatives and baseline, not just selected-route telemetry |
 
-The initial implementation covers manifest validation, a seeded Python defect fixture and an out-of-workspace grader. An isolated runner and reference-patch validation follow. Comparative reporting is deferred until reproducibility and isolation criteria are met.
+The initial implementation includes a strict task manifest, a seeded Python defect fixture, externally stored grader and verified reference/negative controls. **The isolated agent runner remains pending.** Comparative reporting is deferred until isolation, reproducibility and multi-task coverage criteria are met.
 
 ## Funding and ownership
 
