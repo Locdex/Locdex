@@ -57,6 +57,11 @@ def docker_arguments(
 ) -> list[str]:
     """Generate a locked-down Docker invocation without invoking it."""
     validate_image(image)
+    # Docker --mount uses commas as field separators. Refuse paths that could
+    # reinterpret a bind source as additional mount options.
+    mount_paths = [workspace, hidden_grader, model_path]
+    if any("," in str(path) for path in mount_paths if path is not None):
+        raise BenchmarkRunError("Commas in Docker bind-mount paths are not supported.")
     mounts = [
         "--mount", f"type=bind,source={workspace},target=/workspace,readonly={'true' if readonly_workspace else 'false'}",
     ]

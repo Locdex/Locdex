@@ -74,6 +74,14 @@ def test_no_unpinned_or_dangerous_images(tmp_path):
         )
 
 
+def test_mount_sources_cannot_inject_docker_options(tmp_path):
+    with pytest.raises(BenchmarkRunError, match="Commas"):
+        docker_arguments(
+            image=IMAGE, container_name="unsafe", workspace=tmp_path / "a,readonly=true",
+            command=["echo", "test"],
+        )
+
+
 def test_trial_record_strict_allowlist():
     record = {
         "schema": "locdexbench-local-v0",
