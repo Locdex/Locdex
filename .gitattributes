@@ -1,0 +1,6 @@
+# Keep version-pinned benchmark fixtures byte-for-byte reproducible on all OSes.
+# Windows core.autocrlf must not rewrite the pinned source files.
+benchmarks/fixtures/** text eol=lf
+benchmarks/graders/** text eol=lf
+benchmarks/references/** text eol=lf
+benchmarks/tasks/** text eol=lf
