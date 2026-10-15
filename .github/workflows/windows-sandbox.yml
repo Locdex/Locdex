@@ -2,8 +2,7 @@ name: Windows sandbox helper
 
 on:
   push:
-    branches:
-      - architecture-v3.2-ready
+    branches: [main]
     paths:
       - "native/windows-sandbox/**"
       - ".github/workflows/windows-sandbox.yml"
@@ -12,9 +11,13 @@ on:
       - "native/windows-sandbox/**"
       - ".github/workflows/windows-sandbox.yml"
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

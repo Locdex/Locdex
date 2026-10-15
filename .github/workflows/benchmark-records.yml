@@ -1,26 +1,37 @@
-name: Public benchmark record validation
+name: Public benchmark and fixture validation
 
 on:
   pull_request:
     paths:
       - "benchmarks/**"
       - "src/locdex/benchmark/**"
+      - "scripts/validate_benchmark_fixtures.py"
       - ".github/workflows/benchmark-records.yml"
   push:
-    branches: [architecture-v3.2-ready]
+    branches: [main]
     paths:
       - "benchmarks/**"
       - "src/locdex/benchmark/**"
+      - "scripts/validate_benchmark_fixtures.py"
       - ".github/workflows/benchmark-records.yml"
+
+permissions:
+  contents: read
 
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - run: python -m pip install -e .
-      - name: Reject unsafe or invalid public benchmark records
+      - name: Reject invalid public qualification records
         run: python -c "from locdex.benchmark.publish import summarize_directory; print(summarize_directory('benchmarks/results'))"
+      - name: Validate pinned owned fixture baseline and controls
+        run: python scripts/validate_benchmark_fixtures.py

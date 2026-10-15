@@ -1,0 +1,24 @@
+suite: locdexbench-v0
+id: py-arithmetic-edge-001
+category: bugfix
+language: python
+license: MIT
+fixture: benchmarks/fixtures/py-arithmetic-edge-001
+base_commit: 2d7303ce8aa54f907efc9eed42987a5ae7cb7523
+task: >-
+  The nonnegative_difference function returns the wrong result when
+  the difference is zero or negative. Fix the behavior without changing
+  the function signature or modifying test files.
+visible_checks:
+  - [python, -m, unittest, discover, -s, tests, -p, test_visible.py]
+hidden_grader: benchmarks/graders/py-arithmetic-edge-001/test_hidden.py
+reference_file: benchmarks/references/py-arithmetic-edge-001/correct.py
+negative_file: benchmarks/references/py-arithmetic-edge-001/incorrect.py
+allowed_writes:
+  - core.py
+limits:
+  wall_seconds: 600
+  model_steps: 12
+  max_output_tokens: 4096
+  max_context_tokens: 8192
+  network: false
