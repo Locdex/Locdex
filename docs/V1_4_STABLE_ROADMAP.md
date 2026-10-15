@@ -38,7 +38,7 @@ These criteria describe the release gate; they are not assertions that every wor
 
 ## Current evaluation priority: LocdexBench
 
-[LocdexBench v0](../benchmarks/LOCDEXBENCH_DESIGN.md) is designed to measure verified coding outcomes, not merely model loading or a single smoke-test task. Initial milestones cover manifest validation, fixed fixtures, protected graders and isolated execution. Later phases introduce repeated cross-model comparisons, attribution of cloud-assisted completions, cost and latency reporting, and statistical uncertainty.
+[LocdexBench v0](../benchmarks/LOCDEXBENCH_DESIGN.md) is designed to measure verified coding outcomes, not merely model loading or a single smoke-test task. The first project-owned Python fixture, pinned manifest and baseline/reference/negative control validator are now implemented. A container-isolated agent runner and additional tasks remain necessary before comparative measurement. Later phases cover repeated model comparisons, cloud-assisted attribution, cost and latency reporting, and statistical uncertainty.
 
 The work is tracked in [GitHub Issue #15](https://github.com/Locdex/Locdex/issues/15). Benchmark readiness does not imply that a leaderboard or comparative score is already available.
 
@@ -50,5 +50,7 @@ The work is tracked in [GitHub Issue #15](https://github.com/Locdex/Locdex/issue
 | Target v1.4 stable release | `locdex==1.4.0` | `@locdex/cli@1.4.0` via `latest`, when published |
 
 The existing alpha package versions remain immutable release identities. Stable artifacts, tags and distribution metadata will be published separately after the acceptance gate.
+
+The expanded [CI matrix](CI_MATRIX.md) provides Python and npm checks on Linux, Windows and macOS. These checks do not replace live model qualification.
 
 For installation instructions, see the [local-model quickstart](QUICKSTART_LOCAL_MODELS.md). The [publishing specification](PYPI_RELEASE.md) describes the Python and npm release process. Sponsorship priorities and funding targets are listed in the [funding roadmap](FUNDING_AND_ROADMAP.md).

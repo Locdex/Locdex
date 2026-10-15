@@ -597,7 +597,7 @@ Cloud inference still requires an explicitly configured provider, a network-enab
 
 ## Public model qualification and benchmarks
 
-**LocdexBench is under development** as part of the v1.4 release-validation program. Its initial scope is a reproducible [five-task pilot with independent grading](benchmarks/LOCDEXBENCH_DESIGN.md), separate from existing model qualification probes. Project milestones are documented in the [v1.4 roadmap](docs/V1_4_STABLE_ROADMAP.md).
+**LocdexBench is under development** as part of the v1.4 release-validation program. A first [pinned Python fixture and baseline/reference validator](benchmarks/README.md#locdexbench-v0--audited-fixture-controls) are available; the container-isolated agent runner, full five-task suite and comparative scores remain in development. This is distinct from existing model qualification probes. See the [v1.4 roadmap](docs/V1_4_STABLE_ROADMAP.md) and [CI compatibility matrix](docs/CI_MATRIX.md).
 
 
 Locdex now supports **sanitized qualification exports**, separate from a full benchmark suite:
