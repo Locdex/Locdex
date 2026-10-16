@@ -117,6 +117,46 @@ def _call_docker(argv: list[str], name: str, timeout: int) -> subprocess.Complet
             pass
 
 
+
+def _run_agent_with_progress(argv: list[str], name: str, timeout: int):
+    """Show safe heartbeats while capturing model output privately."""
+    started = time.monotonic()
+    print(f"[LocdexBench] Agent starting; timeout {timeout}s.", flush=True)
+    with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+        proc = None
+        timed_out = False
+        try:
+            proc = subprocess.Popen(argv, stdout=out, stderr=err)
+            while True:
+                remaining = timeout - (time.monotonic() - started)
+                if remaining <= 0:
+                    timed_out = True
+                    break
+                try:
+                    proc.wait(timeout=min(15, remaining))
+                    break
+                except subprocess.TimeoutExpired:
+                    print(f"[LocdexBench] Agent execution: {int(time.monotonic()-started)}s / {timeout}s; still running.", flush=True)
+            if timed_out:
+                print("[LocdexBench] Agent execution timed out.", flush=True)
+            return (124 if timed_out else proc.returncode), {
+                "stage": "agent_execution",
+                "timed_out": timed_out,
+                "elapsed_seconds": round(time.monotonic() - started, 3),
+                "exit_code": None if timed_out else proc.returncode,
+            }
+        finally:
+            if proc is not None and proc.poll() is None:
+                proc.kill()
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    pass
+            try:
+                subprocess.run(["docker", "rm", "-f", name], capture_output=True, check=False, timeout=15)
+            except (OSError, subprocess.SubprocessError):
+                pass
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -196,6 +236,7 @@ def run_local_trial(
     visible_passed: bool | None = None
     hidden_passed: bool | None = None
     status = "infra_failed"
+    diagnostics: dict[str, Any] = {"stage": "setup", "timed_out": False}
     with tempfile.TemporaryDirectory(prefix="locdexbench-trial-") as temp:
         parent = Path(temp)
         before = parent / "original"
@@ -227,8 +268,10 @@ def run_local_trial(
             ],
         )
         try:
-            attempt = _call_docker(argv, agent_name, int(task.limits["wall_seconds"]))
-            if attempt.returncode:
+            returncode, diagnostics = _run_agent_with_progress(argv, agent_name, int(task.limits["wall_seconds"]))
+            if diagnostics["timed_out"]:
+                status = "timed_out"
+            elif returncode:
                 status = "agent_failed"
             else:
                 try:
@@ -245,19 +288,25 @@ def run_local_trial(
                         )
                         return _call_docker(params, name, 45).returncode == 0
 
+                    print("[LocdexBench] Agent finished; running independent grading.", flush=True)
+                    diagnostics["stage"] = "visible_grading"
                     visible_passed = grade([
                         "python", "-m", "unittest", "discover", "-s",
                         "tests", "-p", "test_visible.py",
                     ], False)
+                    diagnostics["stage"] = "hidden_grading"
                     hidden_passed = grade([
                         "python", "-m", "unittest", "discover", "-s",
                         "/tmp", "-p", "test_hidden.py",
                     ], True)
                     status = "passed" if visible_passed and hidden_passed else "grader_failed"
+                    diagnostics["stage"] = "completed"
         except subprocess.TimeoutExpired:
             status = "timed_out"
+            diagnostics["timed_out"] = True
         except (OSError, subprocess.SubprocessError):
             status = "infra_failed"
+            diagnostics["stage"] = "infrastructure"
 
     result = {
         "schema": "locdexbench-local-v0",
@@ -274,4 +323,10 @@ def run_local_trial(
         destination = Path(output_path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        diag_path = destination.with_name(destination.stem + ".diagnostics.json")
+        diag_path.write_text(
+            json.dumps({"task_id": task.id, "status": status, **diagnostics}, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(f"[LocdexBench] Diagnostic metadata: {diag_path}", flush=True)
     return result
