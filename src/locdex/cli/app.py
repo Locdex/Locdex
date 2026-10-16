@@ -90,7 +90,7 @@ def build_parser() -> argparse.ArgumentParser:
     install_cmd = model_sub.add_parser("install", help="Download and verify a model explicitly.")
     install_cmd.add_argument("key", choices=sorted(MODEL_PROFILES))
     install_cmd.add_argument("--force", action="store_true")
-    remove_cmd = model_sub.add_parser("remove", help="Remove a Locdex-managed model from cache.")
+    remove_cmd = model_sub.add_parser("remove", help="Delete all managed GGUF downloads and cached revisions for a model.")
     remove_cmd.add_argument("key", choices=sorted(MODEL_PROFILES))
     qualify_cmd = model_sub.add_parser(
         "qualify",
@@ -346,7 +346,7 @@ def cli(argv: list[str] | None = None) -> int:
                 return 0
             if args.model_action == "remove":
                 removed = remove_model(args.key)
-                _print_json({"model": args.key, "removed": removed})
+                _print_json({"model": args.key, "removed": removed, "installed": model_status(args.key)["installed"]})
                 return 0
             if args.model_action == "qualify":
                 result = qualify_model(

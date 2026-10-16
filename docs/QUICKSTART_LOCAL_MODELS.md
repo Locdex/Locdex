@@ -87,6 +87,32 @@ locdex model qualify qwen25-7b --prompt-only
 
 The `--prompt-only` probe checks basic local inference. It is **not** a coding benchmark or a promise that the full agent will finish a task.
 
+## Remove a local model and reclaim disk space
+
+To remove a model that was downloaded through Locdex, first stop any active
+agent or inference sessions using it. Then run:
+
+```bash
+locdex model remove smoke
+locdex model status smoke
+```
+
+The removal command deletes the **actual GGUF downloads**, all cached revisions
+and Hugging Face metadata **inside Locdex's managed cache for that model**, and
+then clears its installation record. Other model profiles are left untouched.
+Successful removal reports \`"removed": true\` and \`"installed": false\`.
+A missing model reports \`"removed": false\`.
+
+On Windows, a GGUF file may remain locked while an inference process is
+running. Locdex now reports this error rather than incorrectly claiming
+success or discarding the install record. Close the process and retry.
+
+Externally provided paths through \`LOCDEX_MODEL_PATH\` and other applications'
+shared Hugging Face caches are **not** deleted automatically; doing so could
+delete user-managed or shared data. An external path must be managed
+separately.
+
+
 ## 4. Run Locdex in a repository
 
 ```bash
