@@ -61,6 +61,14 @@ locdex benchmark run-local --repo . --manifest benchmarks/tasks/py-arithmetic-ed
 
 The metadata-only output includes the task ID, pinned commit, model/image digests, local-only mode, status, container memory limit, elapsed time, step cap, and visible/hidden grader booleans. It contains no prompts, source code, paths or model output. Only passing independent verification qualifies as success. A single attempt is a **functional trial**, not a comparative quality score.
 
+## Progress and timeout diagnostics
+
+The agent phase prints elapsed-time heartbeats approximately every 15 seconds. These are process-liveness messages, **not** proof that the model has generated tokens or finished agent steps. Raw model and tool output is deliberately withheld from terminal progress and benchmark records.
+
+When an output path is supplied, the runner writes an additional local-only `<trial>.diagnostics.json` file containing the current execution stage, timeout flag, elapsed agent time and exit code when known. The public `locdexbench-local-v0` result schema remains unchanged. Neither file includes the model's private responses.
+
+A timeout during the agent stage is recorded as `agent_execution`. Grading stages are identified separately. The 600-second task budget remains unchanged.
+
 ## Known limitations
 
 - The runner currently supports the owned **Python pilot fixture only** and local GGUF execution. Cloud-only and hybrid benchmarking, more languages, broader isolation tests, repeat trials and model comparisons remain outstanding.
