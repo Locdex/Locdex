@@ -17,3 +17,6 @@ node_modules/
 .wrangler/
 .dev.vars
 .dev.vars.*
+
+# Private, machine-local LocdexBench trial results
+benchmarks/results/local/

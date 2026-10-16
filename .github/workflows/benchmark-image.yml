@@ -1,0 +1,39 @@
+name: LocdexBench CPU image smoke
+
+on:
+  pull_request:
+    paths:
+      - "benchmarks/Dockerfile"
+      - "scripts/bench_local.ps1"
+      - "src/locdex/benchmark/isolated_runner.py"
+      - ".github/workflows/benchmark-image.yml"
+  push:
+    branches: [main]
+    paths:
+      - "benchmarks/Dockerfile"
+      - "scripts/bench_local.ps1"
+      - "src/locdex/benchmark/isolated_runner.py"
+      - ".github/workflows/benchmark-image.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  cpu-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build CPU-only image
+        run: docker build --platform linux/amd64 -f benchmarks/Dockerfile -t locdex-bench:ci .
+      - name: Check runtime without network or GGUF downloads
+        run: |
+          ID="$(docker image inspect --format '{{.Id}}' locdex-bench:ci)"
+          docker run --rm --network none --read-only \
+            --tmpfs /tmp:rw,nosuid,nodev,size=256m --user 65534:65534 \
+            "$ID" locdex runtime verify
+          docker run --rm --network none --read-only \
+            --tmpfs /tmp:rw,nosuid,nodev,size=256m --user 65534:65534 \
+            "$ID" locdex task --help
