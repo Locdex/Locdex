@@ -16,30 +16,50 @@ A task's fixed baseline and gold/negative controls are validated separately by `
 
 ## Prerequisites
 
-- A Docker engine capable of running Linux containers.
-- A **preloaded, immutable Docker image** identified by full `sha256:` image ID or a repository digest. The image must contain Python 3.10–3.12, Git, the matching Locdex Python core, and a working `llama-cpp-python` backend. No image is downloaded by the runner.
-- A local GGUF model file that matches the chosen built-in Locdex profile. The single model file is mounted read-only. A model file hash is recorded.
-- A clean Locdex source checkout containing the recorded fixture Git commit. The runner verifies this automatically.
+- Docker Desktop (Windows) running **Linux containers**, with sufficient RAM assigned to Docker, or a Linux Docker engine. The runner is CPU-only in the first milestone.
+- A checkout of `main` with the benchmark fixture commit in Git history.
+- A local Python 3.10–3.12 `.venv` created from this checkout (editable installation).
+- An installed model such as `qwen25-3b` or `qwen25-7b`. The discontinued development-only `smoke` model is not required.
 
-The standard `locdex==1.4.0a1` Python package and `@locdex/cli@1.4.0-alpha.1` are the published testing prerelease. Stable v1.4.0 has not shipped.
+The provided [Dockerfile](Dockerfile) builds a local image containing the current Locdex checkout, Python 3.11, Git and a CPU-only `llama-cpp-python` wheel. Initial image construction downloads dependencies; actual benchmark trials **never download models**, never invoke cloud inference, and use `--network none`.
 
-## Example
+The runner uses the built image's **immutable ID**, not a mutable image tag. The mounted GGUF file stays on the host and is read-only in the agent container.
 
-After preparing the Docker image and confirming its image ID via `docker image inspect`:
+## First benchmark on Windows (PowerShell)
 
-```bash
-locdex benchmark run-local \
-  --repo . \
-  --manifest benchmarks/tasks/py-arithmetic-edge-001.yaml \
-  --image sha256:REPLACE_WITH_FULL_64_HEX_IMAGE_ID \
-  --model smoke \
-  --model-path /absolute/path/to/model.gguf \
-  --output local-trial.json
+After installing Docker Desktop and the selected model, use the repository's virtual environment:
+
+```powershell
+git switch main
+git pull --ff-only origin main
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
+locdex model install qwen25-3b
+.\scripts\bench_local.ps1 -Model qwen25-3b -MemoryGb 8
 ```
 
-The example image ID is a placeholder; no working image is distributed in this stage.
+The setup script performs five checks/actions: confirms Docker and the managed GGUF path, validates the pinned fixture, builds the CPU image, verifies llama.cpp inside a network-disabled container, and invokes `locdex benchmark run-local` with the immutable image ID.
 
-The output is a **metadata-only** result with task ID, pinned commit, model and image digests, mode, status, wall time, step budget, and visible/hidden grader booleans. It contains no prompts, generated source, file paths, credentials or raw model output. Only `status: passed` and both grader outcomes passing count as success.
+For an already-installed Qwen2.5-Coder 7B model, increase the container cap if Docker has enough RAM:
+
+```powershell
+.\scripts\bench_local.ps1 -Model qwen25-7b -MemoryGb 12 -SkipBuild
+```
+
+The `-SkipBuild` flag reuses an existing `locdex-bench:local` image. Rebuild after changing Locdex source code to ensure the image includes the latest version. Test smaller models first if available RAM is limited. The CPU may require several minutes per attempt.
+
+## Direct CLI invocation
+
+The PowerShell helper is optional. Following a successful `docker build`:
+
+```powershell
+docker build --platform linux/amd64 -f benchmarks/Dockerfile -t locdex-bench:local .
+$imageId = (docker image inspect --format '{{.Id}}' locdex-bench:local).Trim()
+$ggufPath = (locdex model status qwen25-3b | ConvertFrom-Json).path
+locdex benchmark run-local --repo . --manifest benchmarks/tasks/py-arithmetic-edge-001.yaml --image $imageId --model qwen25-3b --model-path $ggufPath --memory-gb 8 --output local-trial.json
+```
+
+The metadata-only output includes the task ID, pinned commit, model/image digests, local-only mode, status, container memory limit, elapsed time, step cap, and visible/hidden grader booleans. It contains no prompts, source code, paths or model output. Only passing independent verification qualifies as success. A single attempt is a **functional trial**, not a comparative quality score.
 
 ## Known limitations
 

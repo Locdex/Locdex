@@ -30,7 +30,7 @@ IMAGE_DIGEST = re.compile(r"^(?:[a-z0-9][a-z0-9./_-]*@)?sha256:[a-f0-9]{64}$")
 RECORD_KEYS = {
     "schema", "task_id", "base_commit", "model", "mode", "model_sha256",
     "container_image", "status", "verified", "visible_passed", "hidden_passed",
-    "wall_seconds", "max_steps",
+    "wall_seconds", "max_steps", "memory_gb",
 }
 STATUSES = {"passed", "agent_failed", "grader_failed", "timed_out", "protected_edit", "infra_failed"}
 
@@ -54,9 +54,12 @@ def docker_arguments(
     model_path: Path | None = None,
     model_key: str | None = None,
     readonly_workspace: bool = False,
+    memory_gb: int = 8,
 ) -> list[str]:
     """Generate a locked-down Docker invocation without invoking it."""
     validate_image(image)
+    if type(memory_gb) is not int or not 4 <= memory_gb <= 32:
+        raise BenchmarkRunError("Container memory_gb must be an integer from 4 to 32.")
     # Docker --mount uses commas as field separators. Refuse paths that could
     # reinterpret a bind source as additional mount options.
     mount_paths = [workspace, hidden_grader, model_path]
@@ -88,7 +91,7 @@ def docker_arguments(
         "docker", "run", "--rm", "--name", container_name,
         "--network", "none", "--read-only", "--cap-drop", "ALL",
         "--security-opt", "no-new-privileges", "--pids-limit", "128",
-        "--memory", "8g", "--cpus", "2",
+        "--memory", f"{memory_gb}g", "--cpus", "2",
         "--tmpfs", "/tmp:rw,nosuid,nodev,size=512m",
         "--workdir", "/workspace", "--user", "65534:65534",
         *mounts, *env, image, *command,
@@ -144,6 +147,8 @@ def validate_trial_record(record: dict[str, Any]) -> None:
             raise ValueError("Invalid verification outcome.")
     if type(record["max_steps"]) is not int or not 1 <= record["max_steps"] <= 32:
         raise ValueError("Invalid step budget.")
+    if type(record["memory_gb"]) is not int or not 4 <= record["memory_gb"] <= 32:
+        raise ValueError("Invalid container memory cap.")
     if type(record["wall_seconds"]) not in (float, int) or not 0 <= record["wall_seconds"] <= 100000:
         raise ValueError("Invalid elapsed time.")
 
@@ -156,6 +161,7 @@ def run_local_trial(
     model_key: str,
     model_path: str | Path,
     output_path: str | Path | None = None,
+    memory_gb: int = 8,
 ) -> dict[str, Any]:
     """Run a pinned task in a network-disabled container with separate grading.
 
@@ -166,6 +172,8 @@ def run_local_trial(
     root = Path(repo_root).resolve()
     verify_pinned_fixture(task, root)
     validate_image(image)
+    if type(memory_gb) is not int or not 4 <= memory_gb <= 32:
+        raise BenchmarkRunError("Container memory_gb must be an integer from 4 to 32.")
     if model_key not in MODEL_PROFILES:
         raise BenchmarkRunError("Unknown local model profile.")
     untrusted_model = Path(model_path).expanduser()
@@ -209,7 +217,7 @@ def run_local_trial(
         agent_name = "locdexbench-agent-" + uuid.uuid4().hex[:12]
         argv = docker_arguments(
             image=image, container_name=agent_name, workspace=workspace,
-            model_path=model, model_key=model_key,
+            model_path=model, model_key=model_key, memory_gb=memory_gb,
             command=[
                 "locdex", "task", "--repo", "/workspace",
                 "--task", task.task, "--model", model_key,
@@ -259,7 +267,7 @@ def run_local_trial(
         "status": status, "verified": status == "passed",
         "visible_passed": visible_passed, "hidden_passed": hidden_passed,
         "wall_seconds": round(time.monotonic() - start, 3),
-        "max_steps": task.limits["model_steps"],
+        "max_steps": task.limits["model_steps"], "memory_gb": memory_gb,
     }
     validate_trial_record(result)
     if output_path is not None:

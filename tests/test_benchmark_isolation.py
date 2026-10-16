@@ -45,11 +45,18 @@ def test_agent_container_has_no_network_or_grader(tmp_path):
     assert "LOCDEX_CLOUD_ENABLED=0" in args
     assert "LOCDEX_TELEMETRY_MODE=off" in args
     assert "LOCDEX_MODEL=smoke" in args
+    assert args[args.index("--memory") + 1] == "8g"
     mounts = [args[i + 1] for i, a in enumerate(args) if a == "--mount"]
     assert len(mounts) == 2
     assert all("/grader" not in m for m in mounts)
     assert any("target=/models/model.gguf,readonly=true" in m for m in mounts)
     assert any("target=/workspace,readonly=false" in m for m in mounts)
+    args12 = docker_arguments(image=IMAGE, container_name="agent-12g", workspace=tmp_path,
+        command=["locdex", "task"], memory_gb=12)
+    assert args12[args12.index("--memory") + 1] == "12g"
+    with pytest.raises(BenchmarkRunError, match="memory_gb"):
+        docker_arguments(image=IMAGE, container_name="unsafe", workspace=tmp_path,
+            command=["true"], memory_gb=128)
 
 
 def test_grader_only_mounts_in_separate_readonly_container(tmp_path):
@@ -92,13 +99,15 @@ def test_trial_record_strict_allowlist():
         "container_image": IMAGE,
         "status": "grader_failed", "verified": False,
         "visible_passed": True, "hidden_passed": False,
-        "wall_seconds": 12.5, "max_steps": 12,
+        "wall_seconds": 12.5, "max_steps": 12, "memory_gb": 8,
     }
     validate_trial_record(record)
     with pytest.raises(ValueError):
         validate_trial_record({**record, "private_path": "C:/Users/private"})
     with pytest.raises(ValueError):
         validate_trial_record({**record, "status": "passed", "verified": False})
+    with pytest.raises(ValueError):
+        validate_trial_record({**record, "memory_gb": 64})
 
 
 def test_protected_file_checks_ignore_git_metadata_but_not_tests(tmp_path):
@@ -124,6 +133,8 @@ def test_benchmark_cli_has_isolated_local_option():
     options = build_parser().parse_args([
         "benchmark", "run-local", "--manifest", "benchmarks/tasks/example.yaml",
         "--image", IMAGE, "--model", "smoke", "--model-path", "model.gguf",
+        "--memory-gb", "12",
     ])
     assert options.benchmark_action == "run-local"
     assert options.model == "smoke"
+    assert options.memory_gb == 12

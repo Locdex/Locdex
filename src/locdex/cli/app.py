@@ -134,6 +134,7 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark_local.add_argument("--model", choices=sorted(MODEL_PROFILES), required=True)
     benchmark_local.add_argument("--model-path", required=True, help="Local GGUF file mounted read-only in the agent container.")
     benchmark_local.add_argument("--output", help="Optional allowlisted metadata-only JSON result path.")
+    benchmark_local.add_argument("--memory-gb", type=int, default=8, help="Agent container RAM cap (4-32 GiB).")
 
     sandbox_cmd = sub.add_parser("sandbox", help="Inspect Locdex sandbox capabilities and modes.")
     sandbox_sub = sandbox_cmd.add_subparsers(dest="sandbox_action", required=True)
@@ -399,6 +400,7 @@ def cli(argv: list[str] | None = None) -> int:
                     manifest_path=args.manifest, repo_root=args.repo,
                     image=args.image, model_key=args.model,
                     model_path=args.model_path, output_path=args.output,
+                    memory_gb=args.memory_gb,
                 ))
             else:
                 return 2
