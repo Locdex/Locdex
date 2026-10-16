@@ -4,7 +4,7 @@ category: bugfix
 language: python
 license: MIT
 fixture: benchmarks/fixtures/py-arithmetic-edge-001
-base_commit: 2d7303ce8aa54f907efc9eed42987a5ae7cb7523
+base_commit: 9b58d74c465e7af414327b5623b2ecc115a95989
 task: >-
   The nonnegative_difference function returns the wrong result when
   the difference is zero or negative. Fix the behavior without changing

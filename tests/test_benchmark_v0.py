@@ -28,7 +28,7 @@ def raw():
 def test_manifest_load_and_pinned_fixture():
     task = load_manifest(TASK)
     assert task.suite == "locdexbench-v0"
-    assert task.base_commit == "2d7303ce8aa54f907efc9eed42987a5ae7cb7523"
+    assert task.base_commit == "9b58d74c465e7af414327b5623b2ecc115a95989"
     verify_pinned_fixture(task, ROOT)
 
 
