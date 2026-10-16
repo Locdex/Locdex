@@ -21,7 +21,7 @@ A task's fixed baseline and gold/negative controls are validated separately by `
 - A local Python 3.10–3.12 `.venv` created from this checkout (editable installation).
 - An installed model such as `qwen25-3b` or `qwen25-7b`. The discontinued development-only `smoke` model is not required.
 
-The provided [Dockerfile](Dockerfile) builds a local image containing the current Locdex checkout, Python 3.11, Git and a CPU-only `llama-cpp-python` wheel. Initial image construction downloads dependencies; actual benchmark trials **never download models**, never invoke cloud inference, and use `--network none`.
+The provided [Dockerfile](Dockerfile) builds a local image containing the current Locdex checkout, Python 3.11, Git and a CPU-only `llama-cpp-python` wheel. Initial image construction downloads dependencies. The builder uses `docker buildx build --load` to copy the finished image from BuildKit into the local Docker image store, including when Docker Desktop uses the `docker-container` driver. Without `--load`, `docker image inspect` may fail even after a successful build. Actual benchmark trials **never download models**, never invoke cloud inference, and use `--network none`.
 
 The runner uses the built image's **immutable ID**, not a mutable image tag. The mounted GGUF file stays on the host and is read-only in the agent container.
 
@@ -50,10 +50,10 @@ The `-SkipBuild` flag reuses an existing `locdex-bench:local` image. Rebuild aft
 
 ## Direct CLI invocation
 
-The PowerShell helper is optional. Following a successful `docker build`:
+The PowerShell helper is optional. Following a successful `docker buildx build --load`:
 
 ```powershell
-docker build --platform linux/amd64 -f benchmarks/Dockerfile -t locdex-bench:local .
+docker buildx build --load --platform linux/amd64 -f benchmarks/Dockerfile -t locdex-bench:local .
 $imageId = (docker image inspect --format '{{.Id}}' locdex-bench:local).Trim()
 $ggufPath = (locdex model status qwen25-3b | ConvertFrom-Json).path
 locdex benchmark run-local --repo . --manifest benchmarks/tasks/py-arithmetic-edge-001.yaml --image $imageId --model qwen25-3b --model-path $ggufPath --memory-gb 8 --output local-trial.json

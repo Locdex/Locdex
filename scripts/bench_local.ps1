@@ -54,12 +54,16 @@ try {
     $tag = "locdex-bench:local"
     if (-not $SkipBuild) {
         Write-Host "Building CPU-only image. The first build downloads Python packages..."
-        & docker build --platform linux/amd64 -f benchmarks/Dockerfile -t $tag .
+        # The default Docker Desktop Buildx builder can use the docker-container
+    # driver. Without --load, it leaves the result only in BuildKit cache.
+    & docker buildx build --load --platform linux/amd64 -f benchmarks/Dockerfile -t $tag .
         if ($LASTEXITCODE -ne 0) { throw "Benchmark Docker image build failed." }
     }
 
     $imageId = (& docker image inspect --format '{{.Id}}' $tag)
-    if ($LASTEXITCODE -ne 0 -or -not $imageId) { throw "Benchmark Docker image is missing." }
+    if ($LASTEXITCODE -ne 0 -or -not $imageId) {
+        throw "Benchmark image is missing from the local Docker image store. Re-run the build with docker buildx build --load (or run the helper without -SkipBuild)."
+    }
     $imageId = $imageId.Trim()
     if ($imageId -notmatch '^sha256:[0-9a-f]{64}$') { throw "Cannot determine pinned Docker image ID." }
 
