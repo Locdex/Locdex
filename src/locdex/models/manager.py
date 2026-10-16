@@ -250,17 +250,63 @@ def all_model_statuses() -> list[dict]:
 
 
 def remove_model(key: str) -> bool:
+    """Delete all Locdex-managed downloads for one model, then its manifest.
+
+    The model's entire profile directory is removed, including older revisions
+    and Hugging Face local download metadata. Files outside the managed model
+    directory are never deleted. A failed removal preserves the manifest so a
+    subsequent attempt can retry rather than reporting a false success.
+    """
     profile = get_model_profile(key)
     if os.environ.get("LOCDEX_MODEL_PATH") and profile.key == selected_model_key():
-        raise ModelInstallError("Refusing to delete a model supplied through LOCDEX_MODEL_PATH.")
+        raise ModelInstallError(
+            "This model is selected through LOCDEX_MODEL_PATH, which may be an "
+            "external file. Unset LOCDEX_MODEL_PATH before removing its managed "
+            "downloads. Locdex never deletes externally supplied models."
+        )
 
-    manifest = _manifest(profile.key)
-    if not manifest:
+    models_root = _cache_dir() / "models"
+    model_root = models_root / profile.key
+    manifest_file = _manifest_path(profile.key)
+
+    if models_root.is_symlink() or model_root.is_symlink():
+        raise ModelInstallError(
+            f"Refusing to remove model files through a symlink: {model_root}"
+        )
+    if model_root.exists() and not model_root.is_dir():
+        raise ModelInstallError(f"Model cache entry is not a directory: {model_root}")
+
+    recorded_path = _manifest(profile.key).get("path")
+    if recorded_path:
+        managed_file = Path(str(recorded_path)).expanduser().resolve()
+        if not managed_file.is_relative_to(model_root.resolve()):
+            raise ModelInstallError(
+                f"The recorded model file is outside Locdex's managed cache: "
+                f"{managed_file}. Refusing to claim the external file was deleted."
+            )
+
+    if not model_root.exists() and not manifest_file.exists():
         return False
 
-    path = Path(str(manifest.get("path", ""))).expanduser().resolve()
-    models_root = (_cache_dir() / "models").resolve()
-    if path.exists() and models_root in path.parents:
-        shutil.rmtree(path.parent, ignore_errors=True)
-    _manifest_path(profile.key).unlink(missing_ok=True)
+    try:
+        if model_root.exists():
+            # Do NOT set ignore_errors=True: on Windows a running model may keep
+            # the GGUF locked. The failure must be visible, not silently ignored.
+            shutil.rmtree(model_root)
+        if model_root.exists():
+            raise ModelInstallError(f"Model files remain on disk: {model_root}")
+    except OSError as exc:
+        raise ModelInstallError(
+            f"Could not delete the model files at {model_root}. Close any Locdex "
+            f"processes using the model and retry: {exc}"
+        ) from exc
+
+    try:
+        manifest_file.unlink(missing_ok=True)
+    except OSError as exc:
+        raise ModelInstallError(
+            f"Model files were deleted, but the installation record could not "
+            f"be removed at {manifest_file}: {exc}"
+        ) from exc
+
     return True
