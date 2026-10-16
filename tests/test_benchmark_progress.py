@@ -34,7 +34,7 @@ def test_success_reports_execution_stage(monkeypatch, capsys):
 
 
 def test_timeout_reports_stage_without_raw_output(monkeypatch, capsys):
-    clock = iter([0, 0, 11, 11])
+    clock = iter([0, 0, 11, 11, 11])
     monkeypatch.setattr(isolated_runner.time, "monotonic", lambda: next(clock))
     monkeypatch.setattr(isolated_runner.subprocess, "Popen", lambda *a, **kw: DummyProcess(hangs=True))
     monkeypatch.setattr(isolated_runner.subprocess, "run", lambda *a, **kw: subprocess.CompletedProcess(a, 0))
