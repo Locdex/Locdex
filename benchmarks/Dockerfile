@@ -1,5 +1,5 @@
 # CPU-only LocdexBench image; no model weights or held-out graders are copied.
-FROM --platform=linux/amd64 python:3.11-slim-bookworm
+FROM python:3.11-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates libgomp1 libstdc++6 \
     && rm -rf /var/lib/apt/lists/* \
