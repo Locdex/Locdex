@@ -27,6 +27,7 @@ from .manifest import ManifestError, load_manifest, verify_pinned_fixture
 
 
 IMAGE_DIGEST = re.compile(r"^(?:[a-z0-9][a-z0-9./_-]*@)?sha256:[a-f0-9]{64}$")
+VOLUME_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$")
 RECORD_KEYS = {
     "schema", "task_id", "base_commit", "model", "mode", "model_sha256",
     "container_image", "status", "verified", "visible_passed", "hidden_passed",
@@ -52,6 +53,7 @@ def docker_arguments(
     command: list[str],
     hidden_grader: Path | None = None,
     model_path: Path | None = None,
+    model_volume: str | None = None,
     model_key: str | None = None,
     readonly_workspace: bool = False,
     memory_gb: int = 8,
@@ -68,6 +70,8 @@ def docker_arguments(
     mounts = [
         "--mount", f"type=bind,source={workspace},target=/workspace,readonly={'true' if readonly_workspace else 'false'}",
     ]
+    if model_path is not None and model_volume is not None:
+        raise BenchmarkRunError("Model bind mounts and Docker model volumes are mutually exclusive.")
     if hidden_grader is not None:
         if not readonly_workspace:
             raise BenchmarkRunError("A grader can only be mounted in a read-only grading workspace.")
@@ -76,6 +80,12 @@ def docker_arguments(
         if hidden_grader is not None or readonly_workspace:
             raise BenchmarkRunError("A model file must never be mounted in the grading container.")
         mounts += ["--mount", f"type=bind,source={model_path},target=/models/model.gguf,readonly=true"]
+    if model_volume is not None:
+        if hidden_grader is not None or readonly_workspace:
+            raise BenchmarkRunError("A model volume must never be mounted in the grading container.")
+        if not VOLUME_NAME.fullmatch(model_volume):
+            raise BenchmarkRunError("Invalid Docker model volume name.")
+        mounts += ["--mount", f"type=volume,source={model_volume},target=/models,readonly"]
     env = [
         "-e", "HOME=/tmp", "-e", "XDG_CACHE_HOME=/tmp/.cache",
         "-e", "LOCDEX_CACHE_DIR=/tmp/locdex-cache",
@@ -138,6 +148,113 @@ def _call_docker(argv: list[str], name: str, timeout: int) -> subprocess.Complet
         except (OSError, subprocess.SubprocessError):
             pass
 
+
+
+def _prepare_model_volume(
+    *, image: str, model_path: Path, digest: str,
+    requested_volume: str | None = None,
+) -> tuple[str, str]:
+    """Stage once on the Linux filesystem, then verify SHA-256 before each trial.
+
+    User-supplied volumes must already exist and are never modified. An
+    automatically managed, checksum-keyed cache persists between trials.
+    """
+    validate_image(image)
+    volume = requested_volume or f"locdexbench-gguf-{digest[:24]}"
+    if not VOLUME_NAME.fullmatch(volume):
+        raise BenchmarkRunError("Invalid Docker model volume name.")
+    if not re.fullmatch(r"[a-f0-9]{64}", digest):
+        raise BenchmarkRunError("Invalid model checksum.")
+
+    try:
+        inspect = subprocess.run(
+            ["docker", "volume", "inspect", volume],
+            capture_output=True, text=True, timeout=20, check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise BenchmarkRunError("Could not inspect Docker model volume.") from exc
+
+    exists = inspect.returncode == 0
+    if requested_volume and not exists:
+        raise BenchmarkRunError("Requested pre-staged model volume does not exist.")
+
+    created = False
+    try:
+        if not exists:
+            result = subprocess.run(
+                ["docker", "volume", "create", volume],
+                capture_output=True, text=True, timeout=30, check=False,
+            )
+            if result.returncode != 0:
+                raise BenchmarkRunError("Could not create Docker model cache volume.")
+            created = True
+            print("[LocdexBench] Copying GGUF into Docker-native storage (one-time setup)...", flush=True)
+            stage_name = "locdexbench-model-stage-" + uuid.uuid4().hex[:12]
+            stage_script = (
+                "import os, shutil; "
+                "shutil.copyfile('/source.gguf', '/stage/model.gguf.tmp'); "
+                "os.replace('/stage/model.gguf.tmp', '/stage/model.gguf')"
+            )
+            # Staging is an infrastructure operation, not agent code execution.
+            stage_args = [
+                "docker", "run", "--rm", "--name", stage_name,
+                "--network", "none", "--read-only", "--cap-drop", "ALL",
+                "--security-opt", "no-new-privileges", "--pids-limit", "64",
+                "--memory", "2g", "--cpus", "2",
+                "--tmpfs", "/tmp:rw,nosuid,nodev,size=128m",
+                "--user", "0:0",
+                "--mount", f"type=bind,source={model_path},target=/source.gguf,readonly",
+                "--mount", f"type=volume,source={volume},target=/stage",
+                image, "python", "-c", stage_script,
+            ]
+            try:
+                copied = _call_docker(stage_args, stage_name, 900)
+            except subprocess.TimeoutExpired as exc:
+                raise BenchmarkRunError("Timed out staging GGUF into Docker volume.") from exc
+            if copied.returncode:
+                raise BenchmarkRunError("Could not stage GGUF into Docker volume.")
+
+        print("[LocdexBench] Verifying SHA-256 of Docker-native GGUF...", flush=True)
+        check_name = "locdexbench-model-verify-" + uuid.uuid4().hex[:12]
+        checksum_script = (
+            "import hashlib; h=hashlib.sha256(); "
+            "f=open('/models/model.gguf','rb'); "
+            "[(h.update(chunk)) for chunk in iter(lambda: f.read(4*1024*1024), b'')]; "
+            "print(h.hexdigest())"
+        )
+        check_args = [
+            "docker", "run", "--rm", "--name", check_name,
+            "--network", "none", "--read-only", "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges", "--pids-limit", "64",
+            "--memory", "2g", "--cpus", "2",
+            "--tmpfs", "/tmp:rw,nosuid,nodev,size=128m",
+            "--user", "65534:65534",
+            "--mount", f"type=volume,source={volume},target=/models,readonly",
+            image, "python", "-c", checksum_script,
+        ]
+        try:
+            checked = _call_docker(check_args, check_name, 180)
+        except subprocess.TimeoutExpired as exc:
+            raise BenchmarkRunError("Timed out verifying Docker model volume.") from exc
+        if checked.returncode or checked.stdout.strip() != digest:
+            raise BenchmarkRunError(
+                "Docker model volume checksum mismatch or verification failure. "
+                "Refusing to run an unverified model."
+            )
+        print("[LocdexBench] Verified Docker-native model cache.", flush=True)
+        return volume, "staged" if created else "reused"
+    except BaseException:
+        # Only remove a volume created by this invocation on setup failure.
+        # Never delete a user-provided or previously cached volume.
+        if created:
+            try:
+                subprocess.run(
+                    ["docker", "volume", "rm", volume],
+                    capture_output=True, check=False, timeout=30,
+                )
+            except (OSError, subprocess.SubprocessError):
+                pass
+        raise
 
 
 def _run_agent_with_progress(argv: list[str], name: str, timeout: int):
@@ -274,6 +391,7 @@ def run_local_trial(
     image: str,
     model_key: str,
     model_path: str | Path,
+    model_volume: str | None = None,
     output_path: str | Path | None = None,
     memory_gb: int = 8,
 ) -> dict[str, Any]:
@@ -306,6 +424,10 @@ def run_local_trial(
     if inspect.returncode:
         raise BenchmarkRunError("Pinned Docker image is not available locally.")
     digest = _sha256(model)
+    volume, cache_state = _prepare_model_volume(
+        image=image, model_path=model, digest=digest,
+        requested_volume=model_volume,
+    )
     start = time.monotonic()
     visible_passed: bool | None = None
     hidden_passed: bool | None = None
@@ -332,7 +454,7 @@ def run_local_trial(
         agent_name = "locdexbench-agent-" + uuid.uuid4().hex[:12]
         argv = docker_arguments(
             image=image, container_name=agent_name, workspace=workspace,
-            model_path=model, model_key=model_key, memory_gb=memory_gb,
+            model_volume=volume, model_key=model_key, memory_gb=memory_gb,
             command=[
                 "locdex", "task", "--repo", "/workspace",
                 "--task", task.task, "--model", model_key,
@@ -382,6 +504,8 @@ def run_local_trial(
             status = "infra_failed"
             diagnostics["stage"] = "infrastructure"
 
+    diagnostics["model_storage"] = "docker_volume"
+    diagnostics["model_cache"] = cache_state
     result = {
         "schema": "locdexbench-local-v0",
         "task_id": task.id, "base_commit": task.base_commit,
