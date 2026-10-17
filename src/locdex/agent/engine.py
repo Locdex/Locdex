@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -277,11 +278,17 @@ class AgentEngine:
         additional_context: str | None = None,
         steering_queue: Any | None = None,
     ) -> dict:
+        self._emit(progress, "[Agent] Preparing repository context and selecting local execution plan...")
+        preparation_start = time.monotonic()
         prepared = self.prepare(
             task,
             repo_path,
             cloud_enabled=False,
             routing_mode=routing_mode,
+        )
+        self._emit(
+            progress,
+            f"[Agent] Preparation complete ({time.monotonic() - preparation_start:.1f}s).",
         )
         state: AgentState = prepared["state"]
         state.phase = "act"
@@ -290,9 +297,14 @@ class AgentEngine:
             progress,
             f"[Agent] Loading {self.model_key} once for this task...",
         )
+        model_load_start = time.monotonic()
         local_session = session or LlamaCppSession(
             model_key=self.model_key,
             hardware=prepared["hardware"],
+        )
+        self._emit(
+            progress,
+            f"[Inference] Model ready ({time.monotonic() - model_load_start:.1f}s load/setup).",
         )
 
         # Cloud fallback has already aggregated/redacted targeted evidence
@@ -526,11 +538,18 @@ class AgentEngine:
                 progress,
                 f"[Agent] Step {step}/{step_cap}: choosing next action...",
             )
+            self._emit(progress, f"[Inference] Step {step}/{step_cap}: generating decision...")
+            generation_start = time.monotonic()
             decision = local_session.json_completion(
                 messages,
                 AGENT_RESPONSE_SCHEMA,
                 max_tokens=512,
                 temperature=0.0,
+            )
+            self._emit(
+                progress,
+                f"[Inference] Step {step}/{step_cap}: decision ready "
+                f"({time.monotonic() - generation_start:.1f}s).",
             )
             action = str(decision.get("action", ""))
 
