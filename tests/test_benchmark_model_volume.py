@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 
 import pytest
 
@@ -62,10 +63,10 @@ def test_reuse_existing_cache_checks_digest_without_copy(monkeypatch, tmp_path):
 
     def fake_docker(args, name, timeout):
         agent_calls.append((args, name, timeout))
-        return subprocess.CompletedProcess(args, 0, stdout=DIGEST + "\n")
+        return subprocess.CompletedProcess(args, 0, stdout="GGUF_SHA256 " + DIGEST + "\n")
 
     monkeypatch.setattr(isolated_runner.subprocess, "run", fake_run)
-    monkeypatch.setattr(isolated_runner, "_call_docker", fake_docker)
+    monkeypatch.setattr(isolated_runner, "_verify_docker_checksum_with_progress", fake_docker)
     volume, mode = isolated_runner._prepare_model_volume(
         image=IMAGE, model_path=tmp_path / "model.gguf", digest=DIGEST,
         requested_volume="locdex-qwen25-3b-native",
@@ -100,8 +101,8 @@ def test_mismatched_supplied_volume_rejected_without_delete(monkeypatch, tmp_pat
 
     monkeypatch.setattr(isolated_runner.subprocess, "run", fake_run)
     monkeypatch.setattr(
-        isolated_runner, "_call_docker",
-        lambda args, name, timeout: subprocess.CompletedProcess(args, 0, stdout="0" * 64),
+        isolated_runner, "_verify_docker_checksum_with_progress",
+        lambda args, name, timeout: subprocess.CompletedProcess(args, 0, stdout="GGUF_SHA256 " + "0" * 64),
     )
     with pytest.raises(isolated_runner.BenchmarkRunError, match="checksum mismatch"):
         isolated_runner._prepare_model_volume(
@@ -123,12 +124,15 @@ def test_cache_miss_stages_once_then_verifies(monkeypatch, tmp_path):
 
     def fake_docker(args, name, timeout):
         docker_calls.append(args)
-        return subprocess.CompletedProcess(
-            args, 0, stdout=DIGEST + "\n" if "model-verify-" in name else "",
-        )
+        return subprocess.CompletedProcess(args, 0, stdout="")
+
+    def fake_verify(args, name, timeout):
+        docker_calls.append(args)
+        return subprocess.CompletedProcess(args, 0, stdout="GGUF_SHA256 " + DIGEST + "\\n")
 
     monkeypatch.setattr(isolated_runner.subprocess, "run", fake_run)
     monkeypatch.setattr(isolated_runner, "_call_docker", fake_docker)
+    monkeypatch.setattr(isolated_runner, "_verify_docker_checksum_with_progress", fake_verify)
     volume, mode = isolated_runner._prepare_model_volume(
         image=IMAGE, model_path=tmp_path / "model.gguf", digest=DIGEST,
     )
@@ -137,3 +141,41 @@ def test_cache_miss_stages_once_then_verifies(monkeypatch, tmp_path):
     assert len(docker_calls) == 2
     assert "type=volume,source=" + volume + ",target=/stage" in docker_calls[0]
     assert "type=volume,source=" + volume + ",target=/models,readonly" in docker_calls[1]
+
+
+def test_checksum_helper_relays_progress_without_raw_stdout(monkeypatch, capsys):
+    monkeypatch.setattr(
+        isolated_runner.subprocess, "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(args, 0),
+    )
+    code = (
+        "print('GGUF_PROGRESS 128 256', flush=True);"
+        "print('DO_NOT_EXPOSE_RAW_OUTPUT', flush=True);"
+        "print('GGUF_SHA256 ' + 'a'*64, flush=True)"
+    )
+    result = isolated_runner._verify_docker_checksum_with_progress(
+        [sys.executable, "-u", "-c", code], "dummy-verifier", timeout=5,
+    )
+    assert result.returncode == 0
+    assert "GGUF_SHA256 " + "a" * 64 in result.stdout
+    display = capsys.readouterr().out
+    assert "50%" in display
+    assert "DO_NOT_EXPOSE_RAW_OUTPUT" not in display
+
+
+def test_failed_checksum_never_accepts_matching_digest(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        isolated_runner.subprocess, "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(args, 0, stdout="[]"),
+    )
+    monkeypatch.setattr(
+        isolated_runner, "_verify_docker_checksum_with_progress",
+        lambda args, name, timeout: subprocess.CompletedProcess(
+            args, 1, stdout="GGUF_SHA256 " + DIGEST + "\\n"
+        ),
+    )
+    with pytest.raises(isolated_runner.BenchmarkRunError, match="checksum mismatch"):
+        isolated_runner._prepare_model_volume(
+            image=IMAGE, model_path=tmp_path / "model.gguf", digest=DIGEST,
+            requested_volume="user-provided-volume",
+        )
