@@ -43,3 +43,29 @@ def test_timeout_reports_stage_without_raw_output(monkeypatch, capsys):
     assert diag["timed_out"] is True
     assert diag["stage"] == "agent_execution"
     assert "timed out" in capsys.readouterr().out
+
+
+def test_agent_container_receives_explicit_timeout(monkeypatch, tmp_path):
+    monkeypatch.setenv("LOCDEX_INFERENCE_TIMEOUT_SECONDS", "300")
+    args = isolated_runner.docker_arguments(
+        image="sha256:" + "a" * 64,
+        container_name="agent-test",
+        workspace=tmp_path,
+        command=["locdex", "task"],
+        model_key="qwen25-3b",
+    )
+    assert "LOCDEX_INFERENCE_TIMEOUT_SECONDS=300" in args
+    assert "LOCDEX_BENCH_PROGRESS=1" in args
+
+
+def test_grader_does_not_inherit_model_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("LOCDEX_INFERENCE_TIMEOUT_SECONDS", "300")
+    args = isolated_runner.docker_arguments(
+        image="sha256:" + "a" * 64,
+        container_name="grade-test",
+        workspace=tmp_path,
+        command=["python", "-m", "unittest"],
+        readonly_workspace=True,
+    )
+    assert not any("LOCDEX_INFERENCE_TIMEOUT_SECONDS=" in arg for arg in args)
+    assert "LOCDEX_BENCH_PROGRESS=1" not in args
