@@ -107,3 +107,27 @@ def test_non_progress_stderr_is_not_exposed(monkeypatch, capsys):
     assert diag["phase"] == "unobserved"
     assert diag["stderr_bytes"] > 0
     assert "DO_NOT_PRINT_PRIVATE_MODEL_OUTPUT" not in capsys.readouterr().out
+
+
+def test_agent_receives_opt_in_context_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("LOCDEX_BENCH_CONTEXT_TOKENS", "4096")
+    args = isolated_runner.docker_arguments(
+        image="sha256:" + "a" * 64,
+        container_name="agent-test",
+        workspace=tmp_path,
+        command=["locdex", "task"],
+        model_key="qwen25-3b",
+    )
+    assert "LOCDEX_LLAMA_CONTEXT_TOKENS=4096" in args
+
+
+def test_grader_isolated_from_context_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("LOCDEX_BENCH_CONTEXT_TOKENS", "4096")
+    args = isolated_runner.docker_arguments(
+        image="sha256:" + "a" * 64,
+        container_name="grader-test",
+        workspace=tmp_path,
+        command=["python", "-m", "unittest"],
+        readonly_workspace=True,
+    )
+    assert not any(x.startswith("LOCDEX_LLAMA_CONTEXT_TOKENS=") for x in args)
