@@ -9,7 +9,7 @@ from .. import __version__
 from .interactive import run_interactive
 from ..agent import AgentEngine
 from ..extensions import MCPConfigError, load_mcp_servers
-from ..multiagent import AgentSpecError, MultiAgentError, WorktreeError, load_agent_spec, run_agents
+from ..multiagent import AgentSpecError, MultiAgentError, WorktreeError, load_agent_spec, plan_agents, run_agents
 from ..models import (
     MODEL_PROFILES,
     ModelInstallError,
@@ -192,6 +192,10 @@ def build_parser() -> argparse.ArgumentParser:
     agents_sub = agents_cmd.add_subparsers(dest="agents_action", required=True)
     agents_validate = agents_sub.add_parser("validate", help="Validate an agent YAML config.")
     agents_validate.add_argument("--config", required=True)
+    agents_plan = agents_sub.add_parser("plan", help="Preview dependency waves without models or worktrees.")
+    agents_plan.add_argument("--config", required=True)
+    agents_plan.add_argument("--parallel", type=int, default=1)
+    agents_plan.add_argument("--json", action="store_true", dest="json_output")
     agents_run = agents_sub.add_parser("run", help="Run agents from a YAML config.")
     agents_run.add_argument("--config", required=True)
     agents_run.add_argument("--repo", default=".")
@@ -548,6 +552,25 @@ def cli(argv: list[str] | None = None) -> int:
             spec = load_agent_spec(args.config)
             if args.agents_action == "validate":
                 _print_json(spec.to_dict())
+                return 0
+
+            if args.agents_action == "plan":
+                result = plan_agents(spec, parallel=args.parallel)
+                if args.json_output:
+                    _print_json(result)
+                else:
+                    print(
+                        f"Locdex orchestration plan · "
+                        f"{result['agents_total']} agents · "
+                        f"parallel={result['parallel']}"
+                    )
+                    for wave in result["waves"]:
+                        names = ", ".join(
+                            item["name"] + f" ({item['model']})"
+                            for item in wave["agents"]
+                        )
+                        print(f"Wave {wave['wave']}: {names}")
+                    print("Dry run: no models loaded, worktrees created or files changed.")
                 return 0
 
             if args.agents_action == "run":
