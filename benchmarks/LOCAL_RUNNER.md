@@ -67,7 +67,11 @@ The agent phase prints elapsed-time heartbeats approximately every 15 seconds. T
 
 When an output path is supplied, the runner writes an additional local-only `<trial>.diagnostics.json` file containing the current execution stage, timeout flag, elapsed agent time and exit code when known. The public `locdexbench-local-v0` result schema remains unchanged. Neither file includes the model's private responses.
 
-A timeout during the agent stage is recorded as `agent_execution`. Grading stages are identified separately. The 600-second task budget remains unchanged.
+During a diagnostic trial, the runner also relays bounded `[Agent]` and `[Inference]` phase events from the container, without printing raw model responses or file content. The local-only diagnostic sidecar records the last reported event and event count. These phase events identify loading, generation, step selection, and tool invocation when those events are emitted, but do not measure per-token throughput.
+
+To use an explicit inference phase deadline, set `$env:LOCDEX_INFERENCE_TIMEOUT_SECONDS = "300"` in PowerShell before invoking `bench_local.ps1`. This override is forwarded **only to the agent container**, not the grader. It changes per-inference phase deadlines, not the benchmark task's overall wall-time limit. Use for diagnostic runs and disclose the override when reporting outcomes.
+
+A timeout during the agent stage is recorded as `agent_execution`. Grading stages are identified separately. The standard 600-second task budget remains unchanged.
 
 ## Known limitations
 
