@@ -137,9 +137,10 @@ def _run_agent_with_progress(argv: list[str], name: str, timeout: int):
         offset = 0
         last_event = None
         event_count = 0
+        phase = "unobserved"
 
         def show_events():
-            nonlocal offset, last_event, event_count
+            nonlocal offset, last_event, event_count, phase
             err.flush()
             err.seek(offset)
             raw = err.read(65536)
@@ -153,6 +154,22 @@ def _run_agent_with_progress(argv: list[str], name: str, timeout: int):
                     print(f"[LocdexBench] {safe}", flush=True)
                     last_event = safe
                     event_count += 1
+                    if "CLI task started" in safe:
+                        phase = "agent_startup"
+                    elif "Preparing repository context" in safe:
+                        phase = "context_preparation"
+                    elif "Loading " in safe and "once for this task" in safe:
+                        phase = "model_loading"
+                    elif "Model ready" in safe:
+                        phase = "model_ready"
+                    elif "generating decision" in safe:
+                        phase = "decision_generation"
+                    elif "decision ready" in safe:
+                        phase = "decision_ready"
+                    elif safe.startswith("[Agent] Step "):
+                        phase = "action_selection"
+                    elif safe.startswith("[Agent] "):
+                        phase = "tool_execution"
 
         timed_out = False
         try:
@@ -170,7 +187,10 @@ def _run_agent_with_progress(argv: list[str], name: str, timeout: int):
                     show_events()
                     print(f"[LocdexBench] Agent execution: {int(time.monotonic()-started)}s / {timeout}s; still running.", flush=True)
             if timed_out:
-                print("[LocdexBench] Agent execution timed out.", flush=True)
+                show_events()
+                print(f"[LocdexBench] Agent execution timed out; last observed phase: {phase}.", flush=True)
+            elif event_count == 0:
+                print("[LocdexBench] No agent phase events received; cause not yet identified.", flush=True)
             return (124 if timed_out else proc.returncode), {
                 "stage": "agent_execution",
                 "timed_out": timed_out,
@@ -178,6 +198,8 @@ def _run_agent_with_progress(argv: list[str], name: str, timeout: int):
                 "exit_code": None if timed_out else proc.returncode,
                 "last_event": last_event,
                 "progress_events": event_count,
+                "phase": phase,
+                "stderr_bytes": os.fstat(err.fileno()).st_size,
             }
         finally:
             if proc is not None and proc.poll() is None:
