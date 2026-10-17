@@ -21,12 +21,13 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from ..models.profiles import MODEL_PROFILES
+from ..models.profiles import MODEL_PROFILES, get_model_profile
 from .controls import validate_agent_changes
 from .manifest import ManifestError, load_manifest, verify_pinned_fixture
 
 
 IMAGE_DIGEST = re.compile(r"^(?:[a-z0-9][a-z0-9./_-]*@)?sha256:[a-f0-9]{64}$")
+VOLUME_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$")
 RECORD_KEYS = {
     "schema", "task_id", "base_commit", "model", "mode", "model_sha256",
     "container_image", "status", "verified", "visible_passed", "hidden_passed",
@@ -52,6 +53,7 @@ def docker_arguments(
     command: list[str],
     hidden_grader: Path | None = None,
     model_path: Path | None = None,
+    model_volume: str | None = None,
     model_key: str | None = None,
     readonly_workspace: bool = False,
     memory_gb: int = 8,
@@ -68,6 +70,8 @@ def docker_arguments(
     mounts = [
         "--mount", f"type=bind,source={workspace},target=/workspace,readonly={'true' if readonly_workspace else 'false'}",
     ]
+    if model_path is not None and model_volume is not None:
+        raise BenchmarkRunError("Model bind mounts and Docker model volumes are mutually exclusive.")
     if hidden_grader is not None:
         if not readonly_workspace:
             raise BenchmarkRunError("A grader can only be mounted in a read-only grading workspace.")
@@ -76,6 +80,12 @@ def docker_arguments(
         if hidden_grader is not None or readonly_workspace:
             raise BenchmarkRunError("A model file must never be mounted in the grading container.")
         mounts += ["--mount", f"type=bind,source={model_path},target=/models/model.gguf,readonly=true"]
+    if model_volume is not None:
+        if hidden_grader is not None or readonly_workspace:
+            raise BenchmarkRunError("A model volume must never be mounted in the grading container.")
+        if not VOLUME_NAME.fullmatch(model_volume):
+            raise BenchmarkRunError("Invalid Docker model volume name.")
+        mounts += ["--mount", f"type=volume,source={model_volume},target=/models,readonly"]
     env = [
         "-e", "HOME=/tmp", "-e", "XDG_CACHE_HOME=/tmp/.cache",
         "-e", "LOCDEX_CACHE_DIR=/tmp/locdex-cache",
@@ -84,7 +94,29 @@ def docker_arguments(
         "-e", "LOCDEX_CLOUD_ENABLED=0",
     ]
     if model_key is not None:
-        env += ["-e", f"LOCDEX_MODEL={model_key}", "-e", "LOCDEX_MODEL_PATH=/models/model.gguf"]
+        env += ["-e", f"LOCDEX_MODEL={model_key}", "-e", "LOCDEX_MODEL_PATH=/models/model.gguf",
+                "-e", "LOCDEX_BENCH_PROGRESS=1"]
+        raw_context = os.getenv("LOCDEX_BENCH_CONTEXT_TOKENS", "").strip()
+        if raw_context:
+            try:
+                context = int(raw_context)
+                profile_max = get_model_profile(model_key).preferred_context
+                if not (2048 <= context <= profile_max and context % 256 == 0):
+                    raise ValueError
+            except ValueError as exc:
+                raise BenchmarkRunError(
+                    "LOCDEX_BENCH_CONTEXT_TOKENS must be a multiple of 256 between 2048 and the model preferred context."
+                ) from exc
+            env += ["-e", f"LOCDEX_LLAMA_CONTEXT_TOKENS={context}"]
+        override = os.getenv("LOCDEX_INFERENCE_TIMEOUT_SECONDS", "").strip()
+        if override:
+            try:
+                seconds = float(override)
+                if not (20 <= seconds <= 600) or not seconds.is_integer():
+                    raise ValueError
+            except ValueError as exc:
+                raise BenchmarkRunError("Inference timeout override must be an integer 20-600 seconds.") from exc
+            env += ["-e", f"LOCDEX_INFERENCE_TIMEOUT_SECONDS={int(seconds)}"]
     if hidden_grader is not None:
         env += ["-e", "PYTHONPATH=/workspace"]
     return [
@@ -116,6 +148,303 @@ def _call_docker(argv: list[str], name: str, timeout: int) -> subprocess.Complet
         except (OSError, subprocess.SubprocessError):
             pass
 
+
+
+
+def _verify_docker_checksum_with_progress(
+    argv: list[str], name: str, timeout: int = 900,
+) -> subprocess.CompletedProcess[str]:
+    """Bounded offline SHA-256 check with live, non-sensitive byte-count events.
+
+    The model digest remains private process output; only numeric progress is
+    relayed. A failed or timed-out check always prevents agent execution.
+    """
+    started = time.monotonic()
+    last_notice = 0
+    with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+        proc = None
+        offset = 0
+        pending = ""
+        try:
+            proc = subprocess.Popen(argv, stdout=out, stderr=err)
+            while True:
+                remaining = timeout - (time.monotonic() - started)
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(argv, timeout)
+                try:
+                    proc.wait(timeout=min(15, remaining))
+                    finished = True
+                except subprocess.TimeoutExpired:
+                    finished = False
+
+                out.flush()
+                out.seek(offset)
+                data = out.read(65536)
+                offset = out.tell()
+                pending += data.decode("utf-8", errors="replace")
+                lines = pending.split("\n")
+                pending = lines.pop()
+                for line in lines:
+                    match = re.fullmatch(r"GGUF_PROGRESS (\d+) (\d+)", line.strip())
+                    if match:
+                        processed, total = int(match[1]), int(match[2])
+                        if total > 0 and 0 <= processed <= total:
+                            print(
+                                f"[LocdexBench] GGUF SHA-256: {processed * 100 // total}% "
+                                f"({processed // (1024 * 1024)} MiB read).",
+                                flush=True,
+                            )
+
+                elapsed = int(time.monotonic() - started)
+                if not finished and elapsed - last_notice >= 30:
+                    print(
+                        f"[LocdexBench] GGUF verification still running ({elapsed}s / {timeout}s).",
+                        flush=True,
+                    )
+                    last_notice = elapsed
+                if finished:
+                    out.seek(0)
+                    stdout = out.read().decode("utf-8", errors="replace")
+                    return subprocess.CompletedProcess(
+                        argv, proc.returncode, stdout=stdout, stderr="",
+                    )
+        finally:
+            if proc is not None and proc.poll() is None:
+                proc.kill()
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    pass
+            try:
+                subprocess.run(
+                    ["docker", "rm", "-f", name],
+                    capture_output=True, check=False, timeout=15,
+                )
+            except (OSError, subprocess.SubprocessError):
+                pass
+
+
+def _prepare_model_volume(
+    *, image: str, model_path: Path, digest: str,
+    requested_volume: str | None = None,
+) -> tuple[str, str]:
+    """Stage once on the Linux filesystem, then verify SHA-256 before each trial.
+
+    User-supplied volumes must already exist and are never modified. An
+    automatically managed, checksum-keyed cache persists between trials.
+    """
+    validate_image(image)
+    if "," in str(model_path):
+        raise BenchmarkRunError("Commas in model mount paths are not supported.")
+    volume = requested_volume or f"locdexbench-gguf-{digest[:24]}"
+    if not VOLUME_NAME.fullmatch(volume):
+        raise BenchmarkRunError("Invalid Docker model volume name.")
+    if not re.fullmatch(r"[a-f0-9]{64}", digest):
+        raise BenchmarkRunError("Invalid model checksum.")
+
+    try:
+        inspect = subprocess.run(
+            ["docker", "volume", "inspect", volume],
+            capture_output=True, text=True, timeout=20, check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise BenchmarkRunError("Could not inspect Docker model volume.") from exc
+
+    exists = inspect.returncode == 0
+    if requested_volume and not exists:
+        raise BenchmarkRunError("Requested pre-staged model volume does not exist.")
+
+    created = False
+    try:
+        if not exists:
+            result = subprocess.run(
+                ["docker", "volume", "create", volume],
+                capture_output=True, text=True, timeout=30, check=False,
+            )
+            if result.returncode != 0:
+                raise BenchmarkRunError("Could not create Docker model cache volume.")
+            created = True
+            print("[LocdexBench] Copying GGUF into Docker-native storage (one-time setup)...", flush=True)
+            stage_name = "locdexbench-model-stage-" + uuid.uuid4().hex[:12]
+            stage_script = (
+                "import os, shutil; "
+                "shutil.copyfile('/source.gguf', '/stage/model.gguf.tmp'); "
+                "os.replace('/stage/model.gguf.tmp', '/stage/model.gguf')"
+            )
+            # Staging is an infrastructure operation, not agent code execution.
+            stage_args = [
+                "docker", "run", "--rm", "--name", stage_name,
+                "--network", "none", "--read-only", "--cap-drop", "ALL",
+                "--security-opt", "no-new-privileges", "--pids-limit", "64",
+                "--memory", "2g", "--cpus", "2",
+                "--tmpfs", "/tmp:rw,nosuid,nodev,size=128m",
+                "--user", "0:0",
+                "--mount", f"type=bind,source={model_path},target=/source.gguf,readonly",
+                "--mount", f"type=volume,source={volume},target=/stage",
+                image, "python", "-c", stage_script,
+            ]
+            try:
+                copied = _call_docker(stage_args, stage_name, 900)
+            except subprocess.TimeoutExpired as exc:
+                raise BenchmarkRunError("Timed out staging GGUF into Docker volume.") from exc
+            if copied.returncode:
+                raise BenchmarkRunError("Could not stage GGUF into Docker volume.")
+
+        print("[LocdexBench] Verifying SHA-256 of Docker-native GGUF...", flush=True)
+        check_name = "locdexbench-model-verify-" + uuid.uuid4().hex[:12]
+        checksum_script = """\
+import hashlib
+import os
+
+path = "/models/model.gguf"
+total = os.stat(path).st_size
+digest = hashlib.sha256()
+processed = 0
+last_report = 0
+
+with open(path, "rb") as model_file:
+    while chunk := model_file.read(8 * 1024 * 1024):
+        digest.update(chunk)
+        processed += len(chunk)
+        if processed - last_report >= 128 * 1024 * 1024:
+            print(f"GGUF_PROGRESS {processed} {total}", flush=True)
+            last_report = processed
+
+print(f"GGUF_SHA256 {digest.hexdigest()}", flush=True)
+"""
+        check_args = [
+            "docker", "run", "--rm", "--name", check_name,
+            "--network", "none", "--read-only", "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges", "--pids-limit", "64",
+            "--memory", "2g", "--cpus", "2",
+            "--tmpfs", "/tmp:rw,nosuid,nodev,size=128m",
+            "--user", "65534:65534",
+            "--mount", f"type=volume,source={volume},target=/models,readonly",
+            image, "python", "-u", "-c", checksum_script,
+        ]
+        try:
+            checked = _verify_docker_checksum_with_progress(check_args, check_name, 900)
+        except subprocess.TimeoutExpired as exc:
+            raise BenchmarkRunError(
+                "Timed out verifying Docker model volume after 900s. "
+                "The model was not used; inspect Docker disk and memory pressure."
+            ) from exc
+        digest_lines = [
+            line.removeprefix("GGUF_SHA256 ")
+            for line in checked.stdout.splitlines()
+            if re.fullmatch(r"GGUF_SHA256 [a-f0-9]{64}", line)
+        ]
+        if checked.returncode or len(digest_lines) != 1 or digest_lines[0] != digest:
+            raise BenchmarkRunError(
+                "Docker model volume checksum mismatch or verification failure. "
+                "Refusing to run an unverified model."
+            )
+        print("[LocdexBench] Verified Docker-native model cache.", flush=True)
+        return volume, "staged" if created else "reused"
+    except BaseException:
+        # Only remove a volume created by this invocation on setup failure.
+        # Never delete a user-provided or previously cached volume.
+        if created:
+            try:
+                subprocess.run(
+                    ["docker", "volume", "rm", volume],
+                    capture_output=True, check=False, timeout=30,
+                )
+            except (OSError, subprocess.SubprocessError):
+                pass
+        raise
+
+
+def _run_agent_with_progress(argv: list[str], name: str, timeout: int):
+    """Show safe heartbeats while capturing model output privately."""
+    started = time.monotonic()
+    print(f"[LocdexBench] Agent starting; timeout {timeout}s.", flush=True)
+    with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+        proc = None
+        offset = 0
+        last_event = None
+        event_count = 0
+        phase = "unobserved"
+
+        def show_events():
+            nonlocal offset, last_event, event_count, phase
+            err.flush()
+            err.seek(offset)
+            raw = err.read(65536)
+            offset = err.tell()
+            for line in raw.decode("utf-8", errors="replace").splitlines():
+                line = line.strip()
+                if line.startswith(("[Agent]", "[Inference]")):
+                    # Events originate from the agent runtime, not model responses.
+                    # Keep a bounded, privacy-minimized console message.
+                    safe = line[:240]
+                    print(f"[LocdexBench] {safe}", flush=True)
+                    last_event = safe
+                    event_count += 1
+                    if "CLI task started" in safe:
+                        phase = "agent_startup"
+                    elif "Preparing protected workspace" in safe:
+                        phase = "workspace_setup"
+                    elif "Planning repository retrieval" in safe:
+                        phase = "retrieval_planning"
+                    elif "Retrieval planning complete" in safe:
+                        phase = "retrieval_ready"
+                    elif "Preparing repository context" in safe:
+                        phase = "context_preparation"
+                    elif safe.startswith("[Inference] Loading "):
+                        phase = "model_loading"
+                    elif "Model ready" in safe:
+                        phase = "model_ready"
+                    elif "generating decision" in safe:
+                        phase = "decision_generation"
+                    elif "decision ready" in safe:
+                        phase = "decision_ready"
+                    elif safe.startswith("[Agent] Step "):
+                        phase = "action_selection"
+                    elif safe.startswith("[Agent] "):
+                        phase = "tool_execution"
+
+        timed_out = False
+        try:
+            proc = subprocess.Popen(argv, stdout=out, stderr=err)
+            while True:
+                remaining = timeout - (time.monotonic() - started)
+                if remaining <= 0:
+                    timed_out = True
+                    break
+                try:
+                    proc.wait(timeout=min(15, remaining))
+                    show_events()
+                    break
+                except subprocess.TimeoutExpired:
+                    show_events()
+                    print(f"[LocdexBench] Agent execution: {int(time.monotonic()-started)}s / {timeout}s; still running.", flush=True)
+            if timed_out:
+                show_events()
+                print(f"[LocdexBench] Agent execution timed out; last observed phase: {phase}.", flush=True)
+            elif event_count == 0:
+                print("[LocdexBench] No agent phase events received; cause not yet identified.", flush=True)
+            return (124 if timed_out else proc.returncode), {
+                "stage": "agent_execution",
+                "timed_out": timed_out,
+                "elapsed_seconds": round(time.monotonic() - started, 3),
+                "exit_code": None if timed_out else proc.returncode,
+                "last_event": last_event,
+                "progress_events": event_count,
+                "phase": phase,
+                "stderr_bytes": os.fstat(err.fileno()).st_size,
+            }
+        finally:
+            if proc is not None and proc.poll() is None:
+                proc.kill()
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    pass
+            try:
+                subprocess.run(["docker", "rm", "-f", name], capture_output=True, check=False, timeout=15)
+            except (OSError, subprocess.SubprocessError):
+                pass
 
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -160,6 +489,7 @@ def run_local_trial(
     image: str,
     model_key: str,
     model_path: str | Path,
+    model_volume: str | None = None,
     output_path: str | Path | None = None,
     memory_gb: int = 8,
 ) -> dict[str, Any]:
@@ -192,10 +522,15 @@ def run_local_trial(
     if inspect.returncode:
         raise BenchmarkRunError("Pinned Docker image is not available locally.")
     digest = _sha256(model)
+    volume, cache_state = _prepare_model_volume(
+        image=image, model_path=model, digest=digest,
+        requested_volume=model_volume,
+    )
     start = time.monotonic()
     visible_passed: bool | None = None
     hidden_passed: bool | None = None
     status = "infra_failed"
+    diagnostics: dict[str, Any] = {"stage": "setup", "timed_out": False}
     with tempfile.TemporaryDirectory(prefix="locdexbench-trial-") as temp:
         parent = Path(temp)
         before = parent / "original"
@@ -217,7 +552,7 @@ def run_local_trial(
         agent_name = "locdexbench-agent-" + uuid.uuid4().hex[:12]
         argv = docker_arguments(
             image=image, container_name=agent_name, workspace=workspace,
-            model_path=model, model_key=model_key, memory_gb=memory_gb,
+            model_volume=volume, model_key=model_key, memory_gb=memory_gb,
             command=[
                 "locdex", "task", "--repo", "/workspace",
                 "--task", task.task, "--model", model_key,
@@ -227,8 +562,10 @@ def run_local_trial(
             ],
         )
         try:
-            attempt = _call_docker(argv, agent_name, int(task.limits["wall_seconds"]))
-            if attempt.returncode:
+            returncode, diagnostics = _run_agent_with_progress(argv, agent_name, int(task.limits["wall_seconds"]))
+            if diagnostics["timed_out"]:
+                status = "timed_out"
+            elif returncode:
                 status = "agent_failed"
             else:
                 try:
@@ -245,20 +582,28 @@ def run_local_trial(
                         )
                         return _call_docker(params, name, 45).returncode == 0
 
+                    print("[LocdexBench] Agent finished; running independent grading.", flush=True)
+                    diagnostics["stage"] = "visible_grading"
                     visible_passed = grade([
                         "python", "-m", "unittest", "discover", "-s",
                         "tests", "-p", "test_visible.py",
                     ], False)
+                    diagnostics["stage"] = "hidden_grading"
                     hidden_passed = grade([
                         "python", "-m", "unittest", "discover", "-s",
                         "/tmp", "-p", "test_hidden.py",
                     ], True)
                     status = "passed" if visible_passed and hidden_passed else "grader_failed"
+                    diagnostics["stage"] = "completed"
         except subprocess.TimeoutExpired:
             status = "timed_out"
+            diagnostics["timed_out"] = True
         except (OSError, subprocess.SubprocessError):
             status = "infra_failed"
+            diagnostics["stage"] = "infrastructure"
 
+    diagnostics["model_storage"] = "docker_volume"
+    diagnostics["model_cache"] = cache_state
     result = {
         "schema": "locdexbench-local-v0",
         "task_id": task.id, "base_commit": task.base_commit,
@@ -274,4 +619,10 @@ def run_local_trial(
         destination = Path(output_path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        diag_path = destination.with_name(destination.stem + ".diagnostics.json")
+        diag_path.write_text(
+            json.dumps({"task_id": task.id, "status": status, **diagnostics}, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(f"[LocdexBench] Diagnostic metadata: {diag_path}", flush=True)
     return result

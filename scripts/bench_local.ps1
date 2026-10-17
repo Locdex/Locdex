@@ -15,6 +15,7 @@ param(
     [string] $Model = "qwen25-3b",
     [ValidateRange(4, 32)]
     [int] $MemoryGb = 8,
+    [string] $ModelVolume = "",
     [switch] $SkipBuild
 )
 
@@ -88,6 +89,9 @@ try {
         "--memory-gb", "$MemoryGb",
         "--output", $output
     )
+    if ($ModelVolume) {
+        $args += @("--model-volume", $ModelVolume)
+    }
     & $locdexExe @args
     if ($LASTEXITCODE -ne 0) { throw "Local benchmark runner failed; inspect the error above." }
 

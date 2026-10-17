@@ -8,6 +8,10 @@ The `benchmarks/` directory contains versioned evaluation protocols and reviewed
 
 **LocdexBench** is an evaluation workstream for v1.4 stable development. The [evaluation protocol](LOCDEXBENCH_DESIGN.md) covers task fixtures, execution isolation, independent grading, result attribution and reporting. A first **owned Python test fixture, strict manifest validator and reference-control check** are available. An **experimental Docker-only local trial runner** is available at [LOCAL_RUNNER.md](LOCAL_RUNNER.md), but live model qualification, a multi-task comparative suite and public leaderboard are **not yet available**; no scores have been published.
 
+## Preliminary v0 diagnostic figures (17 October 2026)
+
+The first [measured local CPU / Docker storage figures](RESULTS_V0_PRELIMINARY.md) are available with a loading-time comparison graphic. On one Windows CPU-only setup, loading Qwen2.5-Coder 3B from a Windows file bind mount took **816.3s**, versus **76.7s** from Docker-native storage (**10.6× faster**); first copy into Docker storage took **267.5s**. These are **single-run infrastructure measurements**, not benchmark task-success scores. The pinned fixture controls passed, but the latest end-to-end local agent trial still timed out **before the first decision**. No completed coding benchmark score has been published.
+
 ## LocdexBench v0 — audited fixture controls
 
 The first reviewed task is `py-arithmetic-edge-001` in `tasks/`. Its baseline is pinned to a full Git commit SHA. The coding task lives in `fixtures/`; the held-out grader and gold/negative controls live separately in `graders/` and `references/`. The fixture validator checks the pinned source against Git, then verifies that the buggy baseline fails, the reference fix passes, and the negative control is rejected.

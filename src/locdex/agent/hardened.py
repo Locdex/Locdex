@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
@@ -591,6 +592,7 @@ class AgentEngine(BaseAgentEngine):
         steering_queue: Any | None = None,
     ) -> dict:
         self.event_bus = event_bus
+        self._emit(progress, "[Agent] Preparing protected workspace and permissions...")
         self._last_failure_rollback = []
         self._event(
             "agent.started",
@@ -622,11 +624,17 @@ class AgentEngine(BaseAgentEngine):
                 "Relevant verification must pass before completion.",
             ],
         )
+        self._emit(progress, "[Agent] Planning repository retrieval to identify relevant source files...")
+        retrieval_started = time.monotonic()
         self.retrieval_plan = plan_retrieval(
             repo_path,
             task,
             max_files=8,
             source_tokens=1800,
+        )
+        self._emit(
+            progress,
+            f"[Agent] Retrieval planning complete ({time.monotonic() - retrieval_started:.1f}s).",
         )
         self._preloaded_paths = {
             str(action.get("args", {}).get("path"))
@@ -655,10 +663,20 @@ class AgentEngine(BaseAgentEngine):
             )
         self._last_context_compaction = None
 
-        inner = session or LlamaCppSession(
-            model_key=self.model_key,
-            hardware=detect_hardware(),
-        )
+        if session is None:
+            self._emit(progress, f"[Inference] Loading {self.model_key} for local decisions...")
+            model_started = time.monotonic()
+            inner = LlamaCppSession(
+                model_key=self.model_key,
+                hardware=detect_hardware(),
+            )
+            self._emit(
+                progress,
+                f"[Inference] Model ready ({time.monotonic() - model_started:.1f}s load/setup).",
+            )
+        else:
+            inner = session
+            self._emit(progress, "[Inference] Using supplied model session.")
         guarded_session = _RepairAwareSession(inner, self)
 
         try:

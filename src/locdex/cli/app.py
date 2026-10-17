@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import sys
 
 from .. import __version__
 from .interactive import run_interactive
@@ -132,7 +134,8 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark_local.add_argument("--repo", default=".")
     benchmark_local.add_argument("--image", required=True, help="Preinstalled Docker image pinned by sha256 digest or ID.")
     benchmark_local.add_argument("--model", choices=sorted(MODEL_PROFILES), required=True)
-    benchmark_local.add_argument("--model-path", required=True, help="Local GGUF file mounted read-only in the agent container.")
+    benchmark_local.add_argument("--model-path", required=True, help="Local GGUF input file; staged or matched by SHA-256 in Docker-native storage.")
+    benchmark_local.add_argument("--model-volume", help="Optional existing pre-staged Docker volume with model.gguf; checksum verified before execution.")
     benchmark_local.add_argument("--output", help="Optional allowlisted metadata-only JSON result path.")
     benchmark_local.add_argument("--memory-gb", type=int, default=8, help="Agent container RAM cap (4-32 GiB).")
 
@@ -399,7 +402,7 @@ def cli(argv: list[str] | None = None) -> int:
                 _print_json(run_local_trial(
                     manifest_path=args.manifest, repo_root=args.repo,
                     image=args.image, model_key=args.model,
-                    model_path=args.model_path, output_path=args.output,
+                    model_path=args.model_path, model_volume=args.model_volume, output_path=args.output,
                     memory_gb=args.memory_gb,
                 ))
             else:
@@ -470,6 +473,8 @@ def cli(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "task":
+        if args.json_output and os.getenv("LOCDEX_BENCH_PROGRESS") == "1":
+            print("[Agent] CLI task started; initializing agent engine.", file=sys.stderr, flush=True)
         if not args.json_output:
             telemetry_notice_once()
         if args.json_output and args.permission_mode == PermissionMode.ASK.value:
@@ -491,7 +496,11 @@ def cli(argv: list[str] | None = None) -> int:
                 args.repo,
                 max_steps=args.max_steps,
                 routing_mode=args.mode,
-                progress=None if args.json_output else print,
+                progress=(
+                    (lambda message: print(message, file=sys.stderr, flush=True))
+                    if args.json_output and os.getenv("LOCDEX_BENCH_PROGRESS") == "1"
+                    else None if args.json_output else print
+                ),
                 permission_controller=permission_controller,
                 sandbox_mode=args.sandbox,
             )

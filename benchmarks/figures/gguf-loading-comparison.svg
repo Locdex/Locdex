@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="470" viewBox="0 0 920 470" role="img" aria-labelledby="title desc">
+<title id="title">Qwen2.5-Coder 3B GGUF loading time by Docker model storage</title>
+<desc id="desc">One exploratory run on a low-memory CPU-only Windows machine using 4096 context tokens. Windows bind mount model initialization took 816.3 seconds; a Docker-native volume took 76.7 seconds, a roughly 10.6 times improvement. The comparison does not measure agent task completion.</desc>
+<rect width="920" height="470" rx="20" fill="#111827"/>
+<text x="44" y="58" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="700" fill="#f9fafb">GGUF initialization: storage matters</text>
+<text x="44" y="91" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#cbd5e1">Qwen2.5-Coder 3B Q4_K_M · 4,096 context tokens · CPU-only</text>
+<line x1="250" y1="134" x2="250" y2="325" stroke="#475569" stroke-width="1"/>
+<text x="44" y="187" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#f9fafb">Windows bind mount</text>
+<rect x="250" y="153" width="595" height="56" rx="8" fill="#e9a23b"/>
+<text x="835" y="190" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#111827">816.3s</text>
+<text x="44" y="285" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#f9fafb">Docker-native volume</text>
+<rect x="250" y="251" width="56" height="56" rx="8" fill="#40b7a7"/>
+<text x="320" y="287" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#f9fafb">76.7s</text>
+<rect x="44" y="355" width="832" height="2" fill="#374151"/>
+<text x="44" y="392" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="700" fill="#f9fafb">10.6× faster</text>
+<text x="250" y="392" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#cbd5e1">~90.6% lower model load time</text>
+<text x="44" y="428" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#94a3b8">Exploratory single-run diagnostics · not a LocdexBench task-success score · 17 Oct 2026</text>
+</svg>

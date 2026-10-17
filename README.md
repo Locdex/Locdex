@@ -595,6 +595,10 @@ The existing `LOCDEX_CLOUD_API_KEY` environment variable overrides provider-spec
 
 Cloud inference still requires an explicitly configured provider, a network-enabled sandbox and normal permission authorization. The Cloudflare telemetry endpoint is **not** an inference provider.
 
+### LocdexBench v0: measured infrastructure diagnostics
+
+The initial [Qwen2.5-Coder 3B CPU / Docker results and graph](benchmarks/RESULTS_V0_PRELIMINARY.md) document a **10.6× single-run model-loading improvement** from using Docker-native storage instead of a Windows bind mount. These figures measure startup infrastructure, **not solved coding tasks**: the local agent has not completed independently graded Qwen3B trials. LocdexBench v0 is experimental, not a public model leaderboard or the stable Locdex v1.4 product release.
+
 ## Public model qualification and benchmarks
 
 **LocdexBench is under development** as part of the v1.4 release-validation program. A first [pinned Python fixture and baseline/reference validator](benchmarks/README.md#locdexbench-v0--audited-fixture-controls) are available; an [experimental Docker-only local runner](benchmarks/LOCAL_RUNNER.md) has been added, while its live hardware qualification, the full five-task suite and comparative scores remain outstanding. This is distinct from existing model qualification probes. See the [v1.4 roadmap](docs/V1_4_STABLE_ROADMAP.md) and [CI compatibility matrix](docs/CI_MATRIX.md).
