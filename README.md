@@ -2,13 +2,17 @@
 
 **An open-source, local-first coding agent: repository intelligence and verified code changes, with optional cloud-model escalation.**
 
-**Release status:** **v1.4.1 patch candidate under review (not yet published)** · **v1.4.0a1 testing prerelease available** · **v1.3.1 previous stable release** · Python 3.10–3.12 · Node.js 18+ for the npm launcher.
+**Release status:** **v1.4.1 acceptance passed; publication pending** · **v1.4.0a1 testing prerelease available** · **v1.3.1 previous stable release** · Python 3.10–3.12 · Node.js 18+ for the npm launcher.
 
-The **v1.4 architecture** separates the **Agent** (repository intelligence, planning, guarded tools and verification) from the **Model Runtime** (local model management, inference and optional cloud-provider adapters). The published `v1.4.0a1` prerelease tests this same architecture before the stable `v1.4.0` release. The source of a `v1.4.1` patch candidate is under review; this does not establish registry availability. Comparative LocdexBench evaluation remains experimental.
+The **v1.4 architecture** separates the **Agent** (repository intelligence, planning, guarded tools and verification) from the **Model Runtime** (local model management, inference and optional cloud-provider adapters). The published `v1.4.0a1` prerelease is still the latest publicly released v1.4 testing version. The `v1.4.1` source has passed its local coding-agent acceptance test, but has not yet been published on GitHub Releases, PyPI, or npm. Comparative LocdexBench evaluation remains experimental.
 
 **Start here:** [v1.4.1 patch notes](docs/RELEASE_NOTES_V1_4_1.md) · [Multi-agent orchestration](docs/MULTIAGENT.md) · [v1.4 stable development roadmap](docs/V1_4_STABLE_ROADMAP.md) · [Local-model quickstart](docs/QUICKSTART_LOCAL_MODELS.md) · [Agent vs runtime architecture](#two-architectural-layers-one-v14-release) · [Sponsor / funding roadmap](docs/FUNDING_AND_ROADMAP.md) · [LocdexBench plan](benchmarks/LOCDEXBENCH_DESIGN.md) · [Contribute](#development)
 
-> **Versioning:** `v1.3.1` is the previous stable release. `v1.4.0a1` is available for testing via `pip install "locdex==1.4.0a1"` or `npm install -g @locdex/cli@next`. The `v1.4.1` patch is a release candidate, not yet published.
+> **Versioning:** `v1.3.1` is the previous stable release. `v1.4.0a1` is available for testing via `pip install "locdex==1.4.0a1"` or `npm install -g @locdex/cli@next`. The `v1.4.1` source has passed release acceptance, but packages are not yet published.
+
+## Verified local coding task
+
+On 17 October 2026, Qwen2.5-Coder 3B Instruct Q4_K_M running through Locdex's native Windows CPU runtime successfully corrected a deliberately failing Python function in **two agent steps**. All four independent unit tests passed; only the intended source file changed, and the test file was preserved. The real run took **840.2 seconds** in total, reflecting substantial CPU inference latency. This is one successful smoke test, not a coding-accuracy benchmark or demonstrated live multiagent performance. Details and measured limitations are in the [v1.4.1 release notes](docs/RELEASE_NOTES_V1_4_1.md).
 
 ## Release notifications
 
