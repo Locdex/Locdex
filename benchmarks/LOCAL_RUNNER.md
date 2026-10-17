@@ -2,6 +2,8 @@
 
 **Status:** Experimental local-only runner. It is a development tool, **not** a public leaderboard, and no model scores have been released. The live Docker/GGUF path still requires validation on representative hardware before stable v1.4.
 
+For measured Windows CPU-only loading and Docker-storage diagnostics, see [preliminary v0 figures](RESULTS_V0_PRELIMINARY.md). No completed local coding-agent task score is claimed.
+
 ## Isolation model
 
 A benchmark attempt uses three separate processes:
