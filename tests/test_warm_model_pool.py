@@ -112,3 +112,34 @@ def test_pool_is_closed_after_interactive_loop_returns(monkeypatch, tmp_path):
     monkeypatch.setattr(interactive, "_run_interactive_impl", fake_loop)
     assert interactive.run_interactive(str(tmp_path)) == 0
     assert seen[-1] == "closed"
+
+
+def test_nonblocking_ready_handshake_is_reused_without_reloading():
+    from locdex.runtime.isolated import IsolatedLlamaCppSession
+
+    class FakeProcess:
+        def is_alive(self):
+            return True
+
+    class FakePipe:
+        def __init__(self):
+            self.events = [("ready", {"loading_seconds": 1.25})]
+
+        def poll(self, timeout):
+            return bool(self.events)
+
+        def recv(self):
+            return self.events.pop(0)
+
+    session = IsolatedLlamaCppSession(model_key="smoke", timeout_seconds=5)
+    session._process = FakeProcess()
+    session._parent = FakePipe()
+    assert session.worker_status == "ready"
+    assert session._ready is True
+    assert session._loading_seconds == 1.25
+    assert session.worker_status == "ready"
+    assert session._parent.events == []
+    # Only fake handles are attached; no subprocess or model is started.
+    session._process = None
+    session._parent = None
+    session.close()
