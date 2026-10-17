@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
@@ -150,6 +150,14 @@ def _definition(raw: dict[str, Any], defaults: dict[str, Any]) -> AgentDefinitio
         item.replace("\\", "/").strip()
         for item in raw_scope
     )
+    if any(
+        path.startswith("/") or ":" in path.split("/")[0]
+        or ".." in PurePosixPath(path).parts
+        for path in scope
+    ):
+        raise AgentSpecError(
+            f"Agent {name!r} write_scope must contain relative paths without '..'."
+        )
 
     role = str(raw.get("role", defaults.get("role", "worker"))).strip()
     if not role or len(role) > 64:
