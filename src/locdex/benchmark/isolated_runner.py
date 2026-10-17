@@ -156,9 +156,15 @@ def _run_agent_with_progress(argv: list[str], name: str, timeout: int):
                     event_count += 1
                     if "CLI task started" in safe:
                         phase = "agent_startup"
+                    elif "Preparing protected workspace" in safe:
+                        phase = "workspace_setup"
+                    elif "Planning repository retrieval" in safe:
+                        phase = "retrieval_planning"
+                    elif "Retrieval planning complete" in safe:
+                        phase = "retrieval_ready"
                     elif "Preparing repository context" in safe:
                         phase = "context_preparation"
-                    elif "Loading " in safe and "once for this task" in safe:
+                    elif safe.startswith("[Inference] Loading "):
                         phase = "model_loading"
                     elif "Model ready" in safe:
                         phase = "model_ready"
