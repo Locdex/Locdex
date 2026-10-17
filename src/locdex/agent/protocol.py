@@ -123,7 +123,7 @@ def system_prompt(repo_context: str, model_key: str) -> str:
 
     if model_key == "qwen25-3b":
         smoke_note = (
-            "\\nCOMPACT LOCAL MODEL GUIDANCE: You are an agent operating tools, "
+            "\nCOMPACT LOCAL MODEL GUIDANCE: You are an agent operating tools, "
             "not a chat-only coding assistant. When the task requests a change, "
             "after inspecting the provided source your next output must be a "
             "tool action that actually edits the workspace. Do not merely "
@@ -133,7 +133,7 @@ def system_prompt(repo_context: str, model_key: str) -> str:
             '{"path":"example.py","old":"return a - b","new":"return a + b"}}. '
             "Copy old verbatim from current source; derive new from the task. "
             "After a successful edit, validate, then return final. "
-            "If relevant source is missing, inspect it before editing.\\n"
+            "If relevant source is missing, inspect it before editing.\n"
         )
 
     return f"""You are Locdex, a local-first coding agent operating directly in the user's repository.
