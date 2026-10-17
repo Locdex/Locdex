@@ -152,17 +152,19 @@ def check_now(*, network_allowed: bool = True) -> dict[str, Any]:
 
 
 def update_notice(status: dict[str, Any]) -> str | None:
+    """Show one short command for the installation channel in use."""
     if not status.get("update_available"):
         return None
     latest = status.get("latest")
+    channel = os.environ.get("LOCDEX_INSTALL_CHANNEL", "").strip().lower()
+    command = (
+        "npm install -g @locdex/cli@latest --foreground-scripts"
+        if channel == "npm"
+        else "python -m pip install --upgrade locdex"
+    )
     return (
-        f"Locdex update available: {__version__} → {latest}.\n"
-        f"Review changes: {RELEASES_URL}\n"
-        "To update manually, run one of these commands after verifying that "
-        "the corresponding package version has been published:\n"
-        "  Python: python -m pip install --upgrade locdex\n"
-        "  npm:    npm install -g @locdex/cli@latest --foreground-scripts\n"
-        "Locdex will not install updates automatically."
+        f"Locdex {__version__} is outdated. Version {latest} is available.\n"
+        f"Run: {command}"
     )
 
 
