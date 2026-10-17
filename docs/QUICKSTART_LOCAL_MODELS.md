@@ -140,6 +140,12 @@ locdex task --sandbox workspace-write --permission-mode auto-edit --task "Inspec
 
 Run `locdex model qualify qwen25-7b --max-steps 8` separately for a bounded coding-agent qualification fixture once prompt-only inference passes. This is not LocdexBench.
 
+## Interactive model startup
+
+The interactive CLI starts a separate inference worker for the selected model without blocking the command prompt. The first model request waits for a valid ready handshake and uses the adaptive load deadline. Once initialized, the worker remains available for subsequent tasks in **the same Locdex interactive process**, avoiding repeated GGUF initialization. The `/status` command reports `model_worker=loading|ready|failed|unloaded`; `/model <key>` replaces the worker, and normal exit closes it.
+
+Standalone `locdex task` commands start independent processes and do not share this warm worker. Model initialization remains constrained by hardware memory and storage throughput; asynchronous startup does not reduce the actual work of loading weights.
+
 ## 5. Troubleshooting and performance
 
 ```bash
