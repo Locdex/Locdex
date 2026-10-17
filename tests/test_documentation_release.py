@@ -35,11 +35,14 @@ def test_architecture_docs_use_v14_product_branding(relative_path: str) -> None:
 
 def test_release_status_is_unambiguous() -> None:
     source = (ROOT / "README.md").read_text(encoding="utf-8")
+    notes = (ROOT / "docs/RELEASE_NOTES_V1_4_1.md").read_text(encoding="utf-8")
     assert "v1.3.1" in source
     assert "v1.4.0a1" in source
-    assert "v1.4.0" in source
-    assert "is under development" in source
-    assert "same architecture" in source
+    assert "v1.4.1 acceptance passed; publication pending" in source
+    assert "has not yet been published" in source
+    assert "Source release acceptance passed" in notes
+    assert "4/4 passed" in notes
+    assert "840.2 seconds" in notes
 
 
 def test_readme_mermaid_uses_simple_flowchart_syntax() -> None:
