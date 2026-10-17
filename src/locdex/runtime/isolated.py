@@ -168,6 +168,35 @@ class IsolatedLlamaCppSession:
                 self._announce(f"[Inference] Still {phase} ({int(now - (deadline - self.timeout_seconds))}s); timeout active")
                 last_note = now
 
+    @property
+    def closed(self) -> bool:
+        """Whether the worker can no longer serve inference requests."""
+        return self._closed
+
+    def preload(self) -> None:
+        """Start native GGUF loading in the separate process without waiting.
+
+        The first inference request waits for the worker's ready handshake,
+        using the normal adaptive model-load deadline. Model loading itself
+        never runs on the interactive terminal's input thread.
+        """
+        if self._closed:
+            raise RuntimeExecutionError("Cannot preload a closed inference worker.")
+        self._ensure_started()
+
+    def configure_task(
+        self, *,
+        cancelled: Callable[[], bool] | None = None,
+        progress: Callable[[str], None] | None = None,
+        prefer_cloud_fallback: bool = False,
+    ) -> None:
+        """Update only per-task callbacks; preserve the warm model process."""
+        if self._closed:
+            raise RuntimeExecutionError("Inference worker has already stopped.")
+        self.cancelled = cancelled or (lambda: False)
+        self.progress = progress
+        self.prefer_cloud_fallback = prefer_cloud_fallback
+
     def json_completion(self, messages: list[dict[str, str]], schema: dict[str, Any], **kwargs: Any) -> dict:
         if self._closed:
             raise RuntimeExecutionError("Local inference session has already been closed.")
