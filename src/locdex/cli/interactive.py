@@ -17,7 +17,7 @@ from .activity import ActivityState
 from ..events import AgentEvent, EventBus
 from ..models import MODEL_PROFILES, selected_model_key
 from ..providers.openai_compatible import CloudConfig
-from ..runtime.isolated import IsolatedLlamaCppSession
+from ..runtime.model_pool import WarmModelPool
 from ..routing.execution import execute_with_escalation
 from ..sandbox import SandboxMode, detect_sandbox_capabilities, profile_for_mode
 from ..security import (
@@ -277,6 +277,7 @@ class _InterruptState:
 async def _active_task(
     state: SessionState,
     raw: str,
+    model_pool: WarmModelPool | None = None,
 ) -> tuple[dict[str, Any] | None, AgentEngine | None, bool]:
     loop = asyncio.get_running_loop()
     broker = _ApprovalBroker(loop)
@@ -303,12 +304,23 @@ async def _active_task(
             CloudConfig.from_env().enabled
             and profile_for_mode(state.sandbox_mode).network_access
         )
-        local_session = IsolatedLlamaCppSession(
-            model_key=state.model,
-            cancelled=lambda: steering_queue.cancelled,
-            progress=lambda message: post("progress", message),
-            prefer_cloud_fallback=can_escalate,
-        )
+        if model_pool is None:
+            # Compatibility for standalone activity tests and noninteractive calls.
+            from ..runtime.isolated import IsolatedLlamaCppSession
+
+            local_session = IsolatedLlamaCppSession(
+                model_key=state.model,
+                cancelled=lambda: steering_queue.cancelled,
+                progress=lambda message: post("progress", message),
+                prefer_cloud_fallback=can_escalate,
+            )
+        else:
+            local_session = model_pool.for_task(
+                state.model,
+                cancelled=lambda: steering_queue.cancelled,
+                progress=lambda message: post("progress", message),
+                prefer_cloud_fallback=can_escalate,
+            )
         try:
             return execute_with_escalation(
                 engine,
@@ -325,7 +337,10 @@ async def _active_task(
                 local_session=local_session,
             )
         finally:
-            local_session.close()
+            if model_pool is None:
+                local_session.close()
+            else:
+                model_pool.release_task(local_session)
 
     worker = loop.run_in_executor(None, execute)
     pending_request: tuple[
@@ -615,10 +630,11 @@ def _record_result(
     print()
 
 
-def run_interactive(
+def _run_interactive_impl(
     repo_path: str = ".",
     *,
     resume_id: str | None = None,
+    model_pool: WarmModelPool,
 ) -> int:
     root = Path(repo_path).resolve()
     if not root.is_dir():
@@ -645,6 +661,13 @@ def run_interactive(
         state.save()
 
     _print_header(state)
+    # Spawn the inference worker before the first prompt. The terminal can
+    # accept commands while native model initialization continues separately.
+    try:
+        model_pool.start(state.model)
+        print(f"Model preload started: {state.model}. Use /status to check the selection.")
+    except (OSError, RuntimeError) as exc:
+        print(f"Model preload unavailable ({type(exc).__name__}); retrying on task.")
 
     while True:
         try:
@@ -714,7 +737,11 @@ def run_interactive(
                     continue
                 state.model = key
                 state.save()
-                print(f"Model set to {key}.")
+                try:
+                    model_pool.start(key)
+                    print(f"Model set to {key}; background initialization started.")
+                except (OSError, RuntimeError) as exc:
+                    print(f"Model set to {key}; preload unavailable ({type(exc).__name__}).")
                 continue
             if command == "/permissions":
                 if not value:
@@ -879,7 +906,7 @@ def run_interactive(
             continue
 
         result, engine, exit_after = asyncio.run(
-            _active_task(state, raw)
+            _active_task(state, raw, model_pool)
         )
         if result is not None and engine is not None:
             _record_result(
@@ -891,3 +918,17 @@ def run_interactive(
         if exit_after:
             state.save()
             return 0
+
+
+def run_interactive(
+    repo_path: str = ".",
+    *,
+    resume_id: str | None = None,
+) -> int:
+    """Run the interactive agent with a process-local persistent model worker."""
+    pool = WarmModelPool()
+    try:
+        return _run_interactive_impl(repo_path, resume_id=resume_id, model_pool=pool)
+    finally:
+        # This also covers normal quit/EOF, model switching, and user interrupt.
+        pool.close()
