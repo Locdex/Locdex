@@ -28,12 +28,18 @@ class WarmModelPool:
     def model_key(self) -> str | None:
         return self._model_key
 
+    @property
+    def status(self) -> str:
+        if self._session is None:
+            return "unloaded"
+        return str(self._session.worker_status)
+
     def start(self, model_key: str) -> Any:
         """Begin cold initialization asynchronously; return without waiting for ready."""
         if (
             self._session is not None
             and self._model_key == model_key
-            and not self._session.closed
+            and self._session.worker_status in {"loading", "ready"}
         ):
             return self._session
 
