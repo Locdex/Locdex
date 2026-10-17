@@ -128,7 +128,7 @@ def test_cache_miss_stages_once_then_verifies(monkeypatch, tmp_path):
 
     def fake_verify(args, name, timeout):
         docker_calls.append(args)
-        return subprocess.CompletedProcess(args, 0, stdout="GGUF_SHA256 " + DIGEST + "\\n")
+        return subprocess.CompletedProcess(args, 0, stdout="GGUF_SHA256 " + DIGEST + "\n")
 
     monkeypatch.setattr(isolated_runner.subprocess, "run", fake_run)
     monkeypatch.setattr(isolated_runner, "_call_docker", fake_docker)
@@ -171,7 +171,7 @@ def test_failed_checksum_never_accepts_matching_digest(monkeypatch, tmp_path):
     monkeypatch.setattr(
         isolated_runner, "_verify_docker_checksum_with_progress",
         lambda args, name, timeout: subprocess.CompletedProcess(
-            args, 1, stdout="GGUF_SHA256 " + DIGEST + "\\n"
+            args, 1, stdout="GGUF_SHA256 " + DIGEST + "\n"
         ),
     )
     with pytest.raises(isolated_runner.BenchmarkRunError, match="checksum mismatch"):
