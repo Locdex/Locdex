@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -62,11 +63,26 @@ def plan_inference(
 
     backend = status.active_backend or "cpu"
     gpu_layers = -1 if backend in {"cuda", "metal"} else 0
+    # Explicit diagnostic override only; never silently change published
+    # benchmark model context or exceed the profile's supported preference.
+    context_tokens = profile.preferred_context
+    raw_context = os.getenv("LOCDEX_LLAMA_CONTEXT_TOKENS", "").strip()
+    if raw_context:
+        try:
+            requested_context = int(raw_context)
+        except ValueError as exc:
+            raise RuntimeExecutionError("LOCDEX_LLAMA_CONTEXT_TOKENS must be an integer.") from exc
+        if not (2048 <= requested_context <= profile.preferred_context and requested_context % 256 == 0):
+            raise RuntimeExecutionError(
+                "LOCDEX_LLAMA_CONTEXT_TOKENS must be a multiple of 256 "
+                f"between 2048 and {profile.preferred_context} for {key}."
+            )
+        context_tokens = requested_context
     return InferencePlan(
         model_key=key,
         model_path=str(path),
         backend=backend,
-        n_ctx=profile.preferred_context,
+        n_ctx=context_tokens,
         n_threads=_threads_for(hardware),
         n_gpu_layers=gpu_layers,
         max_tokens=max(1, int(max_tokens)),
