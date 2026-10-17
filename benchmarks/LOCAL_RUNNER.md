@@ -73,6 +73,17 @@ To use an explicit inference phase deadline, set `$env:LOCDEX_INFERENCE_TIMEOUT_
 
 A timeout during the agent stage is recorded as `agent_execution`. Grading stages are identified separately. The standard 600-second task budget remains unchanged.
 
+### Low-memory CPU diagnostic (non-standard)
+
+On memory-constrained Docker Desktop machines, opt in to a reduced model context for an **experimental diagnostic only**:
+
+```powershell
+$env:LOCDEX_BENCH_CONTEXT_TOKENS = "4096"
+.\scripts\bench_local.ps1 -Model qwen25-3b -MemoryGb 6
+```
+
+The override affects only the agent container and does not change Qwen's default 6,144-token context profile, the task's overall wall-time limit, or hidden grading isolation. It changes model conditions, so report it separately from standard results; a smaller context might truncate useful prompt history or fail a task requiring more context. The reduced window is **not a proven fix for slow model loading**. To disable it after diagnosis, use `Remove-Item Env:LOCDEX_BENCH_CONTEXT_TOKENS -ErrorAction SilentlyContinue`.
+
 ## Known limitations
 
 - The runner currently supports the owned **Python pilot fixture only** and local GGUF execution. Cloud-only and hybrid benchmarking, more languages, broader isolation tests, repeat trials and model comparisons remain outstanding.
