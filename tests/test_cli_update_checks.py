@@ -71,7 +71,12 @@ def test_background_checker_does_not_block_and_notifies_once(monkeypatch, tmp_pa
     assert checker._thread is not None
     checker._thread.join(timeout=2)
     notice = checker.poll_notice()
-    assert "Locdex 9.5.0 is available" in notice
+    assert "Locdex update available:" in notice
+    assert "9.5.0" in notice
+    assert "python -m pip install --upgrade locdex" in notice
+    assert "npm install -g @locdex/cli@latest --foreground-scripts" in notice
+    assert "will not install updates automatically" in notice
+    assert "\\n" not in notice
     assert updates.RELEASES_URL in notice
     assert checker.poll_notice() is None
 
