@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import sys
 
 from .. import __version__
 from .interactive import run_interactive
@@ -491,7 +493,11 @@ def cli(argv: list[str] | None = None) -> int:
                 args.repo,
                 max_steps=args.max_steps,
                 routing_mode=args.mode,
-                progress=None if args.json_output else print,
+                progress=(
+                    (lambda message: print(message, file=sys.stderr, flush=True))
+                    if args.json_output and os.getenv("LOCDEX_BENCH_PROGRESS") == "1"
+                    else None if args.json_output else print
+                ),
                 permission_controller=permission_controller,
                 sandbox_mode=args.sandbox,
             )
