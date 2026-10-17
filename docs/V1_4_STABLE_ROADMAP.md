@@ -40,7 +40,7 @@ These criteria describe the release gate; they are not assertions that every wor
 
 [LocdexBench v0](../benchmarks/LOCDEXBENCH_DESIGN.md) is designed to measure verified coding outcomes, not merely model loading or a single smoke-test task. The first project-owned Python fixture, pinned manifest and baseline/reference/negative control validator are now implemented. An experimental container-isolated agent runner and preliminary infrastructure timing data are available. **The complete five-task LocdexBench suite, comparative model quality scores, and public leaderboard are deferred beyond v1.4 stable**; they are not a core product release prerequisite. The release still requires one functioning, verified agent task on declared supported hardware. Later benchmark phases cover repeated model comparisons, cloud-assisted attribution, cost and latency reporting, and statistical uncertainty.
 
-The benchmark work is tracked in [GitHub Issue #15](https://github.com/Locdex/Locdex/issues/15). [Asynchronous model preload and warm worker reuse](https://github.com/Locdex/Locdex/issues/33) are tracked separately for post-v1.4 runtime optimization. Benchmark readiness does not imply that a leaderboard or comparative score is already available.
+The benchmark work is tracked in [GitHub Issue #15](https://github.com/Locdex/Locdex/issues/15). Interactive-session asynchronous warm preload and worker reuse are included in the release candidate. [Cross-process persistence, eviction and broader runtime optimizations](https://github.com/Locdex/Locdex/issues/33) remain future work. Benchmark readiness does not imply that a leaderboard or comparative score is already available.
 
 ## Release channels
 
