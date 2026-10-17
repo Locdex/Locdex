@@ -496,6 +496,27 @@ class AgentEngine:
                     }
                 )
 
+        if (
+            self.model_key == "qwen25-3b"
+            and requires_change
+            and state.files_read
+        ):
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "EDIT REQUIRED: The source of this task has already been "
+                        "read above. Do not answer with a description or a final "
+                        "summary yet. Choose one concrete tool action from "
+                        "replace_in_file, replace_symbol or write_file and give "
+                        "its exact JSON args for the source to be changed. "
+                        "Only edit what is needed. The host will independently "
+                        "verify the result. If no safe edit is possible, "
+                        "explain why via escalate."
+                    ),
+                }
+            )
+
         escalation_deferrals = 0
         step_cap = max(1, min(int(max_steps), 20))
         for step in range(1, step_cap + 1):
@@ -540,9 +561,26 @@ class AgentEngine:
             )
             self._emit(progress, f"[Inference] Step {step}/{step_cap}: generating decision...")
             generation_start = time.monotonic()
+            # A source-changing task cannot be complete until a workspace
+            # mutation succeeds. Narrowing the decision grammar prevents
+            # resource-constrained models wasting expensive generations on
+            # repeatedly proposing "final" before attempting any edit.
+            schema = AGENT_RESPONSE_SCHEMA
+            if (
+                self.model_key == "qwen25-3b"
+                and requires_change
+                and last_mutation_index is None
+            ):
+                schema = {
+                    **AGENT_RESPONSE_SCHEMA,
+                    "properties": {
+                        **AGENT_RESPONSE_SCHEMA["properties"],
+                        "action": {"type": "string", "enum": ["tool", "escalate"]},
+                    },
+                }
             decision = local_session.json_completion(
                 messages,
-                AGENT_RESPONSE_SCHEMA,
+                schema,
                 max_tokens=512,
                 temperature=0.0,
             )
@@ -552,6 +590,18 @@ class AgentEngine:
                 f"({time.monotonic() - generation_start:.1f}s).",
             )
             action = str(decision.get("action", ""))
+            if action == "tool":
+                tool_label = str(decision.get("tool", "unknown"))
+                if tool_label in TOOLS:
+                    self._emit(progress, f"[Agent] Step {step}/{step_cap}: requested {tool_label}.")
+                else:
+                    self._emit(progress, f"[Agent] Step {step}/{step_cap}: unknown tool requested.")
+            elif action in {"final", "escalate"}:
+                self._emit(
+                    progress,
+                    f"[Agent] Step {step}/{step_cap}: model requested {action}."
+                    + (" No edit verified yet." if requires_change and last_mutation_index is None else ""),
+                )
 
             if action == "final":
                 if requires_change and last_mutation_index is None:
