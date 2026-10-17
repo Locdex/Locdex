@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 
 from locdex.benchmark import isolated_runner
 
@@ -69,3 +70,40 @@ def test_grader_does_not_inherit_model_override(monkeypatch, tmp_path):
     )
     assert not any("LOCDEX_INFERENCE_TIMEOUT_SECONDS=" in arg for arg in args)
     assert "LOCDEX_BENCH_PROGRESS=1" not in args
+
+
+def test_real_subprocess_phase_event_is_forwarded(monkeypatch, capsys):
+    """Read actual stderr produced by a process, not only mocked Popen."""
+    monkeypatch.setattr(
+        isolated_runner.subprocess, "run",
+        lambda *a, **kw: subprocess.CompletedProcess(a, 0),
+    )
+    code, diag = isolated_runner._run_agent_with_progress(
+        [sys.executable, "-c",
+         "import sys; print('[Agent] Preparing repository context and selecting local execution plan...', file=sys.stderr, flush=True)"],
+        "agent-test",
+        5,
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert diag["progress_events"] == 1
+    assert diag["phase"] == "context_preparation"
+    assert "Preparing repository context" in out
+
+
+def test_non_progress_stderr_is_not_exposed(monkeypatch, capsys):
+    monkeypatch.setattr(
+        isolated_runner.subprocess, "run",
+        lambda *a, **kw: subprocess.CompletedProcess(a, 0),
+    )
+    code, diag = isolated_runner._run_agent_with_progress(
+        [sys.executable, "-c",
+         "import sys; print('DO_NOT_PRINT_PRIVATE_MODEL_OUTPUT', file=sys.stderr, flush=True)"],
+        "agent-test",
+        5,
+    )
+    assert code == 0
+    assert diag["progress_events"] == 0
+    assert diag["phase"] == "unobserved"
+    assert diag["stderr_bytes"] > 0
+    assert "DO_NOT_PRINT_PRIVATE_MODEL_OUTPUT" not in capsys.readouterr().out
