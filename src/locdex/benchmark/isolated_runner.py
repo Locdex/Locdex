@@ -21,7 +21,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from ..models.profiles import MODEL_PROFILES
+from ..models.profiles import MODEL_PROFILES, get_model_profile
 from .controls import validate_agent_changes
 from .manifest import ManifestError, load_manifest, verify_pinned_fixture
 
@@ -90,11 +90,12 @@ def docker_arguments(
         if raw_context:
             try:
                 context = int(raw_context)
-                if not (2048 <= context <= 8192 and context % 256 == 0):
+                profile_max = get_model_profile(model_key).preferred_context
+                if not (2048 <= context <= profile_max and context % 256 == 0):
                     raise ValueError
             except ValueError as exc:
                 raise BenchmarkRunError(
-                    "LOCDEX_BENCH_CONTEXT_TOKENS must be a multiple of 256 between 2048 and 8192."
+                    "LOCDEX_BENCH_CONTEXT_TOKENS must be a multiple of 256 between 2048 and the model preferred context."
                 ) from exc
             env += ["-e", f"LOCDEX_LLAMA_CONTEXT_TOKENS={context}"]
         override = os.getenv("LOCDEX_INFERENCE_TIMEOUT_SECONDS", "").strip()
