@@ -17,7 +17,7 @@ def test_npm_package_metadata():
     package = json.loads((NPM / "package.json").read_text(encoding="utf-8"))
 
     assert package["name"] == "@locdex/cli"
-    assert package["version"] == "1.4.0-alpha.1"
+    assert package["version"] == "1.4.0"
     assert package["bin"]["locdex"] == "bin/locdex.js"
     assert package["scripts"]["postinstall"] == "node scripts/install.js"
     assert package["engines"]["node"] == ">=18"
@@ -128,6 +128,10 @@ def test_npm_python_version_pin_matches_project_metadata():
     project_version = re.search(r'(?m)^version\s*=\s*"([^"]+)"', project)
     assert project_version is not None
     assert f'locdex=={project_version.group(1)}' in installer
-    parts = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)-alpha\.(\d+)", package["version"])
-    assert parts is not None
-    assert project_version.group(1) == f"{parts[1]}.{parts[2]}.{parts[3]}a{parts[4]}"
+    prerelease = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)-alpha\.(\d+)", package["version"])
+    if prerelease:
+        expected_python = f"{prerelease[1]}.{prerelease[2]}.{prerelease[3]}a{prerelease[4]}"
+    else:
+        assert re.fullmatch(r"\d+\.\d+\.\d+", package["version"])
+        expected_python = package["version"]
+    assert project_version.group(1) == expected_python

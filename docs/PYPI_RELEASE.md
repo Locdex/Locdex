@@ -1,4 +1,4 @@
-# Locdex v1.4 release procedure — stable in development
+# Locdex v1.4 release procedure — stable candidate under review
 
 ## Release status and package identity
 
@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | Prior stable | `v1.3.1` | Published |
 | v1.4 testing prerelease | `v1.4.0a1` / PyPI `locdex==1.4.0a1` / npm `@locdex/cli@1.4.0-alpha.1` | Published prerelease |
-| v1.4 stable target | `v1.4.0` / PyPI `locdex==1.4.0` / npm `@locdex/cli@1.4.0` | **Under development; not published** |
+| v1.4 stable target | `v1.4.0` / PyPI `locdex==1.4.0` / npm `@locdex/cli@1.4.0` | **Release candidate on a feature branch; not published** |
 
 The v1.4 prerelease and v1.4 stable target implement the **same architecture**. The alpha exists for testing, bug fixing and release qualification. The prerelease procedure is retained for traceability. Stable v1.4 artifacts will be built, reviewed, tagged and published separately.
 
@@ -65,11 +65,11 @@ The above v1.4.0a1 release was published and should remain historically accurate
 
 ## Stable v1.4.0 release process (pending)
 
-1. Complete and document the [v1.4 stable acceptance gates](V1_4_STABLE_ROADMAP.md), using the prerelease for real-world testing.
-2. On a reviewed release commit, change `pyproject.toml` to `version = "1.4.0"` and change the npm wrapper package version to `1.4.0` plus its Python pin to `locdex==1.4.0`; update tests and changelog together.
+1. Complete and document the [v1.4 stable acceptance gates](V1_4_STABLE_ROADMAP.md), using the prerelease for real-world testing. **Defer the comparative LocdexBench suite**, but verify a real coding-agent task on an explicitly supported environment.
+2. Review the stable candidate's version alignment: `pyproject.toml`, `src/locdex/__init__.py`, npm wrapper version, and its `locdex==1.4.0` installer pin. Keep `v1.4.0a1` as an immutable historic release.
 3. Verify clean installs, fresh wheel/source archives, CI, supported platforms, installation guides, and task-level agent behavior. Do not reuse the prerelease artifacts.
 4. Create a **new** Git tag `v1.4.0` and a **non-prerelease** GitHub Release once stable release approval is given. GitHub's PyPI Trusted Publishing workflow must verify the tag exactly matches `pyproject.toml`.
 5. Validate `pip install "locdex==1.4.0"` after PyPI publication; then publish `@locdex/cli@1.4.0` on npm as the stable `latest` channel after its independent acceptance tests. Never repoint `latest` at an alpha.
 6. Announce v1.4 stable only after the actual GitHub, PyPI and npm release records exist.
 
-Source package metadata remains at `1.4.0a1` until a stable-release preparation commit is reviewed. Published alpha artifacts retain their original version and tag.
+On the v1.4 **release candidate branch**, `pyproject.toml`, CLI version, npm package version and npm installer pin are aligned to `1.4.0`. Until the candidate merges, `main` may differ. Stable PyPI/npm versions and the `v1.4.0` GitHub Release must not be described as available until they are published. Published alpha artifacts retain their original version and tag.

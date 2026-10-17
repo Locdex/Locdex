@@ -168,6 +168,61 @@ class IsolatedLlamaCppSession:
                 self._announce(f"[Inference] Still {phase} ({int(now - (deadline - self.timeout_seconds))}s); timeout active")
                 last_note = now
 
+    @property
+    def closed(self) -> bool:
+        """Whether the worker can no longer serve inference requests."""
+        return self._closed
+
+    @property
+    def worker_status(self) -> str:
+        if self._closed:
+            return "stopped"
+        if self._process is None:
+            return "unloaded"
+        if not self._process.is_alive():
+            return "failed"
+        # The preload handshake may complete before the first task arrives.
+        # Only the idle interactive owner inspects this property. Consuming
+        # the ready message here avoids incorrectly reporting a loaded model
+        # as "loading" while preserving the worker for later inference.
+        if not getattr(self, "_ready", False) and self._parent is not None:
+            if self._parent.poll(0):
+                try:
+                    kind, detail = self._parent.recv()
+                except EOFError:
+                    return "failed"
+                if kind == "ready":
+                    self._ready = True
+                    self._loading_seconds = float(detail.get("loading_seconds", 0))
+                else:
+                    self._startup_error = str(detail)[:350]
+                    return "failed"
+        return "ready" if getattr(self, "_ready", False) else "loading"
+
+    def preload(self) -> None:
+        """Start native GGUF loading in the separate process without waiting.
+
+        The first inference request waits for the worker's ready handshake,
+        using the normal adaptive model-load deadline. Model loading itself
+        never runs on the interactive terminal's input thread.
+        """
+        if self._closed:
+            raise RuntimeExecutionError("Cannot preload a closed inference worker.")
+        self._ensure_started()
+
+    def configure_task(
+        self, *,
+        cancelled: Callable[[], bool] | None = None,
+        progress: Callable[[str], None] | None = None,
+        prefer_cloud_fallback: bool = False,
+    ) -> None:
+        """Update only per-task callbacks; preserve the warm model process."""
+        if self._closed:
+            raise RuntimeExecutionError("Inference worker has already stopped.")
+        self.cancelled = cancelled or (lambda: False)
+        self.progress = progress
+        self.prefer_cloud_fallback = prefer_cloud_fallback
+
     def json_completion(self, messages: list[dict[str, str]], schema: dict[str, Any], **kwargs: Any) -> dict:
         if self._closed:
             raise RuntimeExecutionError("Local inference session has already been closed.")

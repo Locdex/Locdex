@@ -1,6 +1,6 @@
-# Locdex v1.4 local-model quickstart — stable version in development
+# Locdex v1.4 local-model quickstart — stable candidate in review
 
-**Version availability:** v1.3.1 is the previous stable release. Stable **v1.4.0 remains under development**; the published **v1.4.0a1 prerelease** tests the same architecture. The installation commands below select the available testing prerelease.
+**Version availability:** v1.3.1 is the previous stable release. Stable **v1.4.0 is a release candidate, not yet published**; the published **v1.4.0a1 prerelease** tests the same architecture. The installation commands below select the actually available testing prerelease until stable publication is confirmed.
 
 Get Locdex running **locally**, with no Ollama and no cloud-model API key. Local model downloads are explicit; package installation alone does not download models or install `llama-cpp-python`. For the remaining stable release criteria, see [v1.4 development roadmap](V1_4_STABLE_ROADMAP.md).
 
@@ -140,6 +140,12 @@ locdex task --sandbox workspace-write --permission-mode auto-edit --task "Inspec
 
 Run `locdex model qualify qwen25-7b --max-steps 8` separately for a bounded coding-agent qualification fixture once prompt-only inference passes. This is not LocdexBench.
 
+## Interactive model startup
+
+The interactive CLI starts a separate inference worker for the selected model without blocking the command prompt. The first model request waits for a valid ready handshake and uses the adaptive load deadline. Once initialized, the worker remains available for subsequent tasks in **the same Locdex interactive process**, avoiding repeated GGUF initialization. The `/status` command reports `model_worker=loading|ready|failed|unloaded`; `/model <key>` replaces the worker, and normal exit closes it.
+
+Standalone `locdex task` commands start independent processes and do not share this warm worker. Model initialization remains constrained by hardware memory and storage throughput; asynchronous startup does not reduce the actual work of loading weights.
+
 ## 5. Troubleshooting and performance
 
 ```bash
@@ -161,7 +167,7 @@ Remove-Item Env:LOCDEX_INFERENCE_TIMEOUT_SECONDS -ErrorAction SilentlyContinue
 
 Avoid publishing private qualification reports; use the sanitized `locdex benchmark export` workflow if you intentionally share results.
 
-If `locdex` is not found after an npm install, check `npm prefix -g` and your executable PATH. If the npm bootstrap fails, check that `locdex==1.4.0a1` is available in the same Python environment, your Python version is supported, and rerun `npm install -g @locdex/cli@next --foreground-scripts --loglevel=info`.
+If `locdex` is not found after an npm install, check `npm prefix -g` and your executable PATH. If the npm alpha bootstrap fails, check that `locdex==1.4.0a1` is available in the same Python environment, your Python version is supported, and rerun `npm install -g @locdex/cli@next --foreground-scripts --loglevel=info`.
 
 To remain entirely local, do not configure `LOCDEX_CLOUD_ENABLED` or any cloud provider. Models and generated files remain in their documented local folders unless tools approved by the user deliberately operate over the network.
 
