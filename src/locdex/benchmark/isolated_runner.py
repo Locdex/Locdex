@@ -160,6 +160,8 @@ def _prepare_model_volume(
     automatically managed, checksum-keyed cache persists between trials.
     """
     validate_image(image)
+    if "," in str(model_path):
+        raise BenchmarkRunError("Commas in model mount paths are not supported.")
     volume = requested_volume or f"locdexbench-gguf-{digest[:24]}"
     if not VOLUME_NAME.fullmatch(volume):
         raise BenchmarkRunError("Invalid Docker model volume name.")
