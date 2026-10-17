@@ -21,7 +21,7 @@ if (!fs.existsSync(executable)) {
 const result = spawnSync(executable, process.argv.slice(2), {
   stdio: "inherit",
   windowsHide: false,
-  env: process.env
+  env: { ...process.env, LOCDEX_INSTALL_CHANNEL: "npm" }
 });
 
 if (result.error) {
