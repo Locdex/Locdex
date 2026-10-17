@@ -84,7 +84,17 @@ def docker_arguments(
         "-e", "LOCDEX_CLOUD_ENABLED=0",
     ]
     if model_key is not None:
-        env += ["-e", f"LOCDEX_MODEL={model_key}", "-e", "LOCDEX_MODEL_PATH=/models/model.gguf"]
+        env += ["-e", f"LOCDEX_MODEL={model_key}", "-e", "LOCDEX_MODEL_PATH=/models/model.gguf",
+                "-e", "LOCDEX_BENCH_PROGRESS=1"]
+        override = os.getenv("LOCDEX_INFERENCE_TIMEOUT_SECONDS", "").strip()
+        if override:
+            try:
+                seconds = float(override)
+                if not (20 <= seconds <= 600) or not seconds.is_integer():
+                    raise ValueError
+            except ValueError as exc:
+                raise BenchmarkRunError("Inference timeout override must be an integer 20-600 seconds.") from exc
+            env += ["-e", f"LOCDEX_INFERENCE_TIMEOUT_SECONDS={int(seconds)}"]
     if hidden_grader is not None:
         env += ["-e", "PYTHONPATH=/workspace"]
     return [
@@ -124,6 +134,26 @@ def _run_agent_with_progress(argv: list[str], name: str, timeout: int):
     print(f"[LocdexBench] Agent starting; timeout {timeout}s.", flush=True)
     with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
         proc = None
+        offset = 0
+        last_event = None
+        event_count = 0
+
+        def show_events():
+            nonlocal offset, last_event, event_count
+            err.flush()
+            err.seek(offset)
+            raw = err.read(65536)
+            offset = err.tell()
+            for line in raw.decode("utf-8", errors="replace").splitlines():
+                line = line.strip()
+                if line.startswith(("[Agent]", "[Inference]")):
+                    # Events originate from the agent runtime, not model responses.
+                    # Keep a bounded, privacy-minimized console message.
+                    safe = line[:240]
+                    print(f"[LocdexBench] {safe}", flush=True)
+                    last_event = safe
+                    event_count += 1
+
         timed_out = False
         try:
             proc = subprocess.Popen(argv, stdout=out, stderr=err)
@@ -134,8 +164,10 @@ def _run_agent_with_progress(argv: list[str], name: str, timeout: int):
                     break
                 try:
                     proc.wait(timeout=min(15, remaining))
+                    show_events()
                     break
                 except subprocess.TimeoutExpired:
+                    show_events()
                     print(f"[LocdexBench] Agent execution: {int(time.monotonic()-started)}s / {timeout}s; still running.", flush=True)
             if timed_out:
                 print("[LocdexBench] Agent execution timed out.", flush=True)
@@ -144,6 +176,8 @@ def _run_agent_with_progress(argv: list[str], name: str, timeout: int):
                 "timed_out": timed_out,
                 "elapsed_seconds": round(time.monotonic() - started, 3),
                 "exit_code": None if timed_out else proc.returncode,
+                "last_event": last_event,
+                "progress_events": event_count,
             }
         finally:
             if proc is not None and proc.poll() is None:
