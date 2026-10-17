@@ -1,3 +1,3 @@
 """Locdex public package."""
 
-__version__ = "0.3.2a1"
+__version__ = "1.4.0"
