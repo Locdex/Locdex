@@ -170,6 +170,8 @@ class BackgroundUpdateCheck:
         self._network_allowed = network_allowed
         if not automatic_checks_enabled(network_allowed=network_allowed):
             return
+        if self._thread is not None and self._thread.is_alive():
+            return
         checked_at = cached_status().get("checked_at")
         if isinstance(checked_at, (int, float)):
             elapsed = time.time() - checked_at
