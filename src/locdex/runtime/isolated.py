@@ -181,6 +181,22 @@ class IsolatedLlamaCppSession:
             return "unloaded"
         if not self._process.is_alive():
             return "failed"
+        # The preload handshake may complete before the first task arrives.
+        # Only the idle interactive owner inspects this property. Consuming
+        # the ready message here avoids incorrectly reporting a loaded model
+        # as "loading" while preserving the worker for later inference.
+        if not getattr(self, "_ready", False) and self._parent is not None:
+            if self._parent.poll(0):
+                try:
+                    kind, detail = self._parent.recv()
+                except EOFError:
+                    return "failed"
+                if kind == "ready":
+                    self._ready = True
+                    self._loading_seconds = float(detail.get("loading_seconds", 0))
+                else:
+                    self._startup_error = str(detail)[:350]
+                    return "failed"
         return "ready" if getattr(self, "_ready", False) else "loading"
 
     def preload(self) -> None:
