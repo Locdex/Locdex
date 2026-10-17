@@ -8,7 +8,7 @@ Locdex v1.4.0 advances the open-source local-first coding agent architecture est
 
 - **Repository-aware agent:** structured tasks, targeted source retrieval, multi-step local model tool decisions, permission prompts, bounded execution, verification and change rollback.
 - **Local and optional cloud runtime:** managed GGUF model profiles and separate inference backend installation; cloud escalation remains opt-in with provider configuration and permission policy.
-- **Safety and observability:** task progress, verification evidence, sandbox capability reporting, constrained tool access, and protected test behavior.
+- **Interactive warm model worker:** one isolated llama.cpp child begins loading before the first interactive task, reports a nonblocking worker state, reuses initialized weights across sequential tasks and unloads on model switching or CLI exit. One-shot `locdex task` invocations still have a cold-start cost.\n- **Safety and observability:** task progress, verification evidence, sandbox capability reporting, constrained tool access, and protected test behavior.
 - **Experimental LocdexBench v0 infrastructure:** first pinned Python fixture, visible/held-out grading controls, offline Docker runner, and checksum-verified GGUF model caching in Linux-native Docker volumes. [Preliminary hardware findings](../benchmarks/RESULTS_V0_PRELIMINARY.md) are **diagnostics only**, not benchmark task-completion scores.
 - **Distribution:** Python package `locdex==1.4.0` and npm wrapper `@locdex/cli@1.4.0`, with npm pinning the exact Python release. Publishing is pending the release approval and successful artifact checks.
 
@@ -21,7 +21,7 @@ On one older Windows CPU-only setup (Intel Core i5-5200U; ~7.72 GiB host RAM, ~3
 ## Out of scope for v1.4.0
 
 - Public comparative LocdexBench leaderboard, five-task benchmark suite, and a claim of verified model coding accuracy.
-- Persistent model worker across independent tasks, asynchronous warm-start and built-in model preloading. These are future optimizations: [runtime preload issue #33](https://github.com/Locdex/Locdex/issues/33).
+- Cross-process model daemon for independent one-shot commands, configurable idle eviction and shared warm workers across terminals. Interactive sessions already support process-local asynchronous preload and warm reuse; additional runtime optimizations remain tracked in [issue #33](https://github.com/Locdex/Locdex/issues/33).
 - Guaranteed filesystem and network isolation for all native Windows/macOS sandbox configurations. Consult platform capability reporting before allowing untrusted repositories.
 
 ## Release gate and approval checklist
