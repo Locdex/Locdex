@@ -135,3 +135,19 @@ def test_npm_python_version_pin_matches_project_metadata():
         assert re.fullmatch(r"\d+\.\d+\.\d+", package["version"])
         expected_python = package["version"]
     assert project_version.group(1) == expected_python
+
+
+def test_npm_readme_is_public_product_documentation():
+    readme = (NPM / "README.md").read_text(encoding="utf-8")
+    assert "npm install -g @locdex/cli" in readme
+    assert "locdex runtime install --backend auto" in readme
+    assert "locdex model list" in readme
+    for internal_instruction in (
+        "Package release verification",
+        "Registry release checklist",
+        "npm publish",
+        "npm whoami",
+        "publish the prerelease",
+        "Do not publish from a checkout",
+    ):
+        assert internal_instruction not in readme
