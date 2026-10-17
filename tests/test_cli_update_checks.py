@@ -71,14 +71,23 @@ def test_background_checker_does_not_block_and_notifies_once(monkeypatch, tmp_pa
     assert checker._thread is not None
     checker._thread.join(timeout=2)
     notice = checker.poll_notice()
-    assert "Locdex update available:" in notice
-    assert "9.5.0" in notice
-    assert "python -m pip install --upgrade locdex" in notice
-    assert "npm install -g @locdex/cli@latest --foreground-scripts" in notice
-    assert "will not install updates automatically" in notice
+    assert "Locdex 1.4.1 is outdated. Version 9.5.0 is available." in notice
+    assert notice.splitlines()[-1] == "Run: python -m pip install --upgrade locdex"
+    assert "npm install" not in notice
     assert "\\n" not in notice
-    assert updates.RELEASES_URL in notice
     assert checker.poll_notice() is None
+
+
+def test_npm_launcher_receives_npm_only_upgrade_command(monkeypatch, tmp_path):
+    _isolate(monkeypatch, tmp_path)
+    monkeypatch.setenv("LOCDEX_INSTALL_CHANNEL", "npm")
+    status = {"update_available": True, "latest": "9.5.0"}
+    notice = updates.update_notice(status)
+    assert notice.splitlines() == [
+        "Locdex 1.4.1 is outdated. Version 9.5.0 is available.",
+        "Run: npm install -g @locdex/cli@latest --foreground-scripts",
+    ]
+    assert "pip install" not in notice
 
 
 def test_recent_cache_skips_network_and_preserves_notice(monkeypatch, tmp_path):
