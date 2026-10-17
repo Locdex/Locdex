@@ -7,7 +7,7 @@
 A benchmark attempt uses three separate processes:
 
 1. A **disposable Git workspace** containing only an audited and commit-pinned fixture, never the grader or reference patches.
-2. A **locked-down Docker agent container** with the workspace as its sole writable bind mount and a selected GGUF model as a read-only file. Networking is disabled, Linux capabilities dropped, root filesystem read-only, process/memory/CPU limits applied, and cloud inference plus telemetry uploads disabled.
+2. A **locked-down Docker agent container** with the workspace as its sole writable bind mount and the GGUF on a Docker-native volume mounted read-only (after checksum verification). Networking is disabled, Linux capabilities dropped, root filesystem read-only, process/memory/CPU limits applied, and cloud inference plus telemetry uploads disabled.
 3. A **separate grading container** with the candidate workspace mounted read-only. The held-out grader is mounted only into the grading container; it is never accessible to the agent.
 
 The runner checks changed files against the explicit per-task allowlist before grading. A timed-out or failed attempt does not receive a pass. No local subprocess fallback is available if Docker or the pinned image is missing.
@@ -23,7 +23,7 @@ A task's fixed baseline and gold/negative controls are validated separately by `
 
 The provided [Dockerfile](Dockerfile) builds a local image containing the current Locdex checkout, Python 3.11, Git and a CPU-only `llama-cpp-python` wheel. Initial image construction downloads dependencies. The builder uses `docker buildx build --load` to copy the finished image from BuildKit into the local Docker image store, including when Docker Desktop uses the `docker-container` driver. Without `--load`, `docker image inspect` may fail even after a successful build. Actual benchmark trials **never download models**, never invoke cloud inference, and use `--network none`.
 
-The runner uses the built image's **immutable ID**, not a mutable image tag. The mounted GGUF file stays on the host and is read-only in the agent container.
+The runner uses the built image's **immutable ID**, not a mutable image tag. The host GGUF stays unchanged. The runner stages a checksum-keyed copy into a persistent Docker-native volume, validates its SHA-256 before each trial, and mounts that volume read-only into the agent container. The grader never receives the model volume. The first transfer from Windows storage can be slow, but subsequent trials reuse the verified copy.
 
 ## First benchmark on Windows (PowerShell)
 
@@ -38,7 +38,7 @@ locdex model install qwen25-3b
 .\scripts\bench_local.ps1 -Model qwen25-3b -MemoryGb 8
 ```
 
-The setup script performs five checks/actions: confirms Docker and the managed GGUF path, validates the pinned fixture, builds the CPU image, verifies llama.cpp inside a network-disabled container, and invokes `locdex benchmark run-local` with the immutable image ID.
+The helper confirms Docker and the managed GGUF path, validates the pinned fixture, builds the CPU image, verifies llama.cpp inside a network-disabled container, and invokes `locdex benchmark run-local` with the immutable image ID. Before running the agent, the runner stages or reuses the model in Docker-native storage and verifies its SHA-256.
 
 For an already-installed Qwen2.5-Coder 7B model, increase the container cap if Docker has enough RAM:
 
@@ -47,6 +47,19 @@ For an already-installed Qwen2.5-Coder 7B model, increase the container cap if D
 ```
 
 The `-SkipBuild` flag reuses an existing `locdex-bench:local` image. Rebuild after changing Locdex source code to ensure the image includes the latest version. Test smaller models first if available RAM is limited. The CPU may require several minutes per attempt.
+
+## Reuse an already staged Docker GGUF volume
+
+If you've already copied the exact Qwen GGUF into a Docker volume under the filename `model.gguf`, you can reuse that volume without another Windows-to-Docker transfer. For example:
+
+```powershell
+$env:LOCDEX_BENCH_CONTEXT_TOKENS = "4096"  # non-standard low-memory diagnostic
+.\scripts\bench_local.ps1 -Model qwen25-3b -MemoryGb 6 -ModelVolume locdex-qwen25-3b-native -SkipBuild
+```
+
+The runner compares SHA-256 of the volume's `/models/model.gguf` against the selected local model **before executing the agent**. An absent, corrupt, or mismatching user-supplied volume fails closed; it is never overwritten or deleted. When `-ModelVolume` is omitted, LocdexBench uses a persistent checksum-keyed cache, stages automatically on a cache miss and verifies the cached GGUF before every run. Staging and integrity verification are infrastructure operations excluded from the timed agent trial; cold and warm setup costs should be reported separately when relevant.
+
+The volume contains an **additional full copy of the GGUF**. Remove unused cache volumes deliberately using `docker volume rm <name>` only after confirming they are no longer needed. The model cache remains local, the agent is offline, and graders cannot access it. Reduced-context experiments change benchmark conditions and should not be reported as standard-model scores.
 
 ## Direct CLI invocation
 
