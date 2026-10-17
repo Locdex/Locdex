@@ -1,6 +1,6 @@
 # Locdex v1.4.1 — release notes
 
-**Status:** Source release acceptance passed on 17 October 2026; GitHub Release and registry publication pending.
+**Validation:** Local coding-agent release acceptance passed on 17 October 2026. Tagged releases and distribution registries identify the published artifacts.
 
 Locdex v1.4.1 improves the interactive terminal, multi-agent orchestration checks and safe worktree integration while maintaining the v1.4 local-first coding-agent architecture.
 
