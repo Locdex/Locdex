@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import queue
 import signal
@@ -15,6 +16,7 @@ from prompt_toolkit.patch_stdout import patch_stdout
 from ..agent import AgentEngine
 from .activity import ActivityState
 from .welcome import print_welcome
+from .updates import BackgroundUpdateCheck, cached_status, check_now, set_automatic_checks, update_notice
 from ..events import AgentEvent, EventBus
 from ..models import MODEL_PROFILES, selected_model_key
 from ..providers.openai_compatible import CloudConfig
@@ -181,6 +183,7 @@ def _help() -> None:
 Commands:
   /help                       Show this help.
   /status                     Show session/model/permission/sandbox status.
+  /update [check|status|on|off] View or control automatic version checks.
   /model [key]                Show or change the model.
   /permissions [mode]         plan | ask | auto-edit | trusted | unrestricted.
   /sandbox [mode]             read-only | workspace-write | workspace-network | unrestricted.
@@ -661,6 +664,13 @@ def _run_interactive_impl(
         state.save()
 
     _print_header(state)
+    update_checker = BackgroundUpdateCheck()
+    update_checker.start(
+        network_allowed=profile_for_mode(state.sandbox_mode).network_access
+    )
+    startup_notice = update_checker.poll_notice()
+    if startup_notice:
+        print(startup_notice)
     # Spawn the inference worker before the first prompt. The terminal can
     # accept commands while native model initialization continues separately.
     try:
@@ -670,8 +680,16 @@ def _run_interactive_impl(
         print(f"Model preload unavailable ({type(exc).__name__}); retrying on task.")
 
     while True:
+        next_notice = update_checker.poll_notice()
+        if next_notice:
+            print(next_notice)
         try:
             raw = input("locdex> ").strip()
+            # Display completed nonblocking checks at the next safe prompt
+            # boundary rather than printing over a user's typed command.
+            next_notice = update_checker.poll_notice()
+            if next_notice:
+                print(next_notice)
         except (EOFError, KeyboardInterrupt):
             print()
             state.save()
@@ -716,6 +734,36 @@ def _run_interactive_impl(
                     f"checkpoints="
                     f"{len(list_checkpoints(state.session_id))}"
                 )
+                continue
+            if command == "/update":
+                action = value.lower() or "status"
+                if action == "status":
+                    info = cached_status()
+                    info["automatic"] = info["automatic"] and profile_for_mode(
+                        state.sandbox_mode
+                    ).network_access
+                    print(json.dumps(info, indent=2))
+                elif action == "check":
+                    result = check_now(
+                        network_allowed=profile_for_mode(state.sandbox_mode).network_access
+                    )
+                    notice = update_notice(result)
+                    print(notice or json.dumps(result, indent=2))
+                elif action in {"on", "off"}:
+                    try:
+                        set_automatic_checks(action == "on")
+                        update_checker.start(
+                            network_allowed=profile_for_mode(state.sandbox_mode).network_access
+                        )
+                    except OSError as exc:
+                        print(f"Could not save update preference: {exc}")
+                        continue
+                    print(
+                        "Automatic release checks enabled." if action == "on"
+                        else "Automatic release checks disabled."
+                    )
+                else:
+                    print("Usage: /update [check|status|on|off]")
                 continue
             if command == "/model":
                 if not value:
