@@ -10,6 +10,10 @@ The **v1.4 architecture** separates the **Agent** (repository intelligence, plan
 
 > **Versioning:** `v1.3.1` is the previous stable release. `v1.4.0a1` is available for testing via `pip install "locdex==1.4.0a1"` or `npm install -g @locdex/cli@next`. The `v1.4.1` patch is a release candidate, not yet published.
 
+## Release notifications
+
+The interactive CLI checks the public Python package registry for stable updates asynchronously, at most once per 24 hours. It displays a notice but never installs packages automatically. Disable with `locdex update off` or `LOCDEX_OFFLINE=1`. See [update checks](docs/UPDATE_CHECKS.md).
+
 ## Multi-agent orchestration
 
 The `locdex agents plan` command previews agent dependency waves and concurrency **without loading any GGUF model or modifying Git worktrees**. Separate `locdex agents run` executes configured agents in isolated worktrees. See [multi-agent orchestration](docs/MULTIAGENT.md) for the low-memory sample and execution requirements.

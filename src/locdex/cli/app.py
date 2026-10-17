@@ -7,6 +7,7 @@ import sys
 
 from .. import __version__
 from .interactive import run_interactive
+from .updates import cached_status, check_now, set_automatic_checks
 from ..agent import AgentEngine
 from ..extensions import MCPConfigError, load_mcp_servers
 from ..multiagent import AgentSpecError, MultiAgentError, WorktreeError, load_agent_spec, plan_agents, run_agents
@@ -65,6 +66,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("status", help="Show detected hardware.")
+    update = sub.add_parser("update", help="Inspect or control automatic release checks.")
+    update_sub = update.add_subparsers(dest="update_action", required=True)
+    update_sub.add_parser("status", help="Show cached release and automatic-check setting.")
+    update_sub.add_parser("check", help="Check PyPI for a newer stable Locdex release.")
+    update_sub.add_parser("on", help="Enable automatic background checks at interactive startup.")
+    update_sub.add_parser("off", help="Disable automatic background checks.")
+
     inference_cmd = sub.add_parser("inference", help="Inspect estimated per-model inference timeouts.")
     inference_sub = inference_cmd.add_subparsers(dest="inference_action", required=True)
     budget_cmd = inference_sub.add_parser("budget", help="Estimate the model load and generation deadlines.")
@@ -284,6 +292,31 @@ def _permission_controller(
 
 def cli(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+
+    if args.command == "update":
+        if args.update_action == "on":
+            try:
+                set_automatic_checks(True)
+            except OSError as exc:
+                print(f"Locdex update settings error: {exc}")
+                return 1
+            print("Automatic update checks enabled. No packages are installed automatically.")
+            return 0
+        if args.update_action == "off":
+            try:
+                set_automatic_checks(False)
+            except OSError as exc:
+                print(f"Locdex update settings error: {exc}")
+                return 1
+            print("Automatic update checks disabled.")
+            return 0
+        if args.update_action == "status":
+            _print_json(cached_status())
+            return 0
+        if args.update_action == "check":
+            result = check_now()
+            _print_json(result)
+            return 1 if result.get("error") else 0
 
     if args.command is None:
         telemetry_notice_once()
