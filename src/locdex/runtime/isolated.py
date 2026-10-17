@@ -173,6 +173,16 @@ class IsolatedLlamaCppSession:
         """Whether the worker can no longer serve inference requests."""
         return self._closed
 
+    @property
+    def worker_status(self) -> str:
+        if self._closed:
+            return "stopped"
+        if self._process is None:
+            return "unloaded"
+        if not self._process.is_alive():
+            return "failed"
+        return "ready" if getattr(self, "_ready", False) else "loading"
+
     def preload(self) -> None:
         """Start native GGUF loading in the separate process without waiting.
 
