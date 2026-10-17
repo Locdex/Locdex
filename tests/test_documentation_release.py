@@ -38,9 +38,9 @@ def test_release_status_is_unambiguous() -> None:
     notes = (ROOT / "docs/RELEASE_NOTES_V1_4_1.md").read_text(encoding="utf-8")
     assert "v1.3.1" in source
     assert "v1.4.0a1" in source
-    assert "v1.4.1 acceptance passed; publication pending" in source
-    assert "has not yet been published" in source
-    assert "Source release acceptance passed" in notes
+    assert "v1.4.1 (release-accepted)" in source
+    assert "Actual published versions must be verified separately" in source
+    assert "Local coding-agent release acceptance passed" in notes
     assert "4/4 passed" in notes
     assert "840.2 seconds" in notes
 
