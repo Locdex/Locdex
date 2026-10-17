@@ -472,6 +472,8 @@ def cli(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "task":
+        if args.json_output and os.getenv("LOCDEX_BENCH_PROGRESS") == "1":
+            print("[Agent] CLI task started; initializing agent engine.", file=sys.stderr, flush=True)
         if not args.json_output:
             telemetry_notice_once()
         if args.json_output and args.permission_mode == PermissionMode.ASK.value:
