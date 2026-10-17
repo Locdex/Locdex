@@ -14,6 +14,7 @@ from prompt_toolkit.patch_stdout import patch_stdout
 
 from ..agent import AgentEngine
 from .activity import ActivityState
+from .welcome import print_welcome
 from ..events import AgentEvent, EventBus
 from ..models import MODEL_PROFILES, selected_model_key
 from ..providers.openai_compatible import CloudConfig
@@ -160,18 +161,17 @@ def _session_context(state: SessionState) -> str:
 
 def _print_header(state: SessionState) -> None:
     caps = detect_sandbox_capabilities()
-    print()
-    print("Locdex interactive")
-    print(f"Session: {state.session_id}")
-    print(f"Repository: {state.repo_path}")
-    print(f"Model: {state.model}")
-    print(f"Permissions: {state.permission_mode}")
-    print(
-        f"Sandbox: {state.sandbox_mode} "
-        f"({caps.backend}; "
-        f"OS isolation={'yes' if caps.os_isolation else 'no'})"
+    print_welcome(
+        repo_path=state.repo_path,
+        model=state.model,
+        permission_mode=state.permission_mode,
+        sandbox_mode=state.sandbox_mode,
     )
-    print("Type /help for commands; exit or /exit closes Locdex.")
+    print(
+        f"Session {state.session_id} · "
+        f"Sandbox backend {caps.backend} · "
+        f"OS isolation {'enabled' if caps.os_isolation else 'unavailable'}"
+    )
     print()
 
 

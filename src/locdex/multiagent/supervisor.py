@@ -168,6 +168,7 @@ def _blocked_result(
 
 def _integration_conflicts(
     ordered: list[dict[str, Any]],
+    definitions: dict[str, AgentDefinition],
 ) -> dict[str, list[str]]:
     owners: dict[str, list[str]] = {}
     for row in ordered:
@@ -178,8 +179,94 @@ def _integration_conflicts(
     return {
         path: names
         for path, names in owners.items()
-        if len(names) > 1
+        if any(
+            not _depends_transitively(left, right, definitions)
+            and not _depends_transitively(right, left, definitions)
+            for i, left in enumerate(names)
+            for right in names[i + 1:]
+        )
     }
+
+
+def _worker_limit(spec: AgentRunSpec, parallel: int) -> int:
+    try:
+        requested = int(parallel)
+    except (TypeError, ValueError) as exc:
+        raise MultiAgentError("Parallel worker count must be a positive integer.") from exc
+    if requested < 1 or requested > 8:
+        raise MultiAgentError("--parallel must be between 1 and 8.")
+    return min(requested, len(spec.agents))
+
+
+def plan_agents(spec: AgentRunSpec, *, parallel: int = 1) -> dict[str, Any]:
+    """Build the same dependency-aware execution waves without loading models.
+
+    Safe for low-memory systems: no GGUF, subprocess, Git worktree, network,
+    repository write or permission prompt is required to validate scheduling.
+    """
+    workers = _worker_limit(spec, parallel)
+    by_name = {agent.name: agent for agent in spec.agents}
+    index = {agent.name: i for i, agent in enumerate(spec.agents)}
+    pending = set(by_name)
+    finished: set[str] = set()
+    waves: list[dict[str, Any]] = []
+
+    while pending:
+        ready = [
+            by_name[name] for name in pending
+            if set(by_name[name].depends_on) <= finished
+        ]
+        if not ready:
+            raise MultiAgentError("Agent dependencies contain a cycle or unknown dependency.")
+        ready.sort(key=lambda a: (-a.priority, index[a.name]))
+        batch = ready[:workers]
+        waves.append({
+            "wave": len(waves) + 1,
+            "agents": [{
+                "name": a.name,
+                "role": a.role,
+                "model": a.model,
+                "task": a.task,
+                "depends_on": list(a.depends_on),
+                "write_scope": list(a.write_scope),
+                "priority": a.priority,
+            } for a in batch],
+        })
+        names = {a.name for a in batch}
+        finished.update(names)
+        pending -= names
+
+    return {
+        "schema": "locdex-agents-plan-v1",
+        "dry_run": True,
+        "agents_total": len(spec.agents),
+        "parallel": workers,
+        "waves": waves,
+        "requires_models": sorted({agent.model for agent in spec.agents}),
+        "model_loading": False,
+        "worktrees_created": False,
+        "notes": [
+            "This plan validates orchestration order only; it does not measure model coding accuracy.",
+            "Parallel local agents can load separate GGUF models; use --parallel 1 on memory-constrained systems.",
+        ],
+    }
+
+
+def _depends_transitively(
+    descendant: str, ancestor: str, definitions: dict[str, AgentDefinition],
+) -> bool:
+    """Return whether descendant extends work from ancestor."""
+    visited: set[str] = set()
+    stack = list(definitions[descendant].depends_on)
+    while stack:
+        node = stack.pop()
+        if node == ancestor:
+            return True
+        if node not in visited:
+            visited.add(node)
+            stack.extend(definitions[node].depends_on)
+    return False
+
 
 
 def run_agents(
@@ -190,10 +277,7 @@ def run_agents(
     progress: ProgressCallback | None = None,
     approval_callback=None,
 ) -> dict[str, Any]:
-    workers = max(
-        1,
-        min(int(parallel), 8, len(spec.agents)),
-    )
+    workers = _worker_limit(spec, parallel)
     ask_agents = [
         agent.name
         for agent in spec.agents
@@ -316,6 +400,11 @@ def run_agents(
         if not runnable:
             continue
 
+        safe_progress(
+            "[Supervisor] Starting " + ", ".join(
+                d.name for d, _ in runnable
+            ) + f" (parallel={len(runnable)})."
+        )
         with ThreadPoolExecutor(
             max_workers=min(workers, len(runnable))
         ) as pool:
@@ -334,6 +423,10 @@ def run_agents(
                 name = futures[future]
                 outcomes[name] = future.result()
                 pending.discard(name)
+                safe_progress(
+                    f"[Supervisor] {name}: "
+                    f"{outcomes[name]['result'].get('status', 'unknown')}"
+                )
 
     ordered = [
         outcomes[agent.name]
@@ -344,7 +437,7 @@ def run_agents(
         for row in ordered
         if row["result"].get("status") == "completed"
     )
-    conflicts = _integration_conflicts(ordered)
+    conflicts = _integration_conflicts(ordered, definitions)
     integration_plan = [
         {
             "agent": row["name"],

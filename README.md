@@ -2,13 +2,17 @@
 
 **An open-source, local-first coding agent: repository intelligence and verified code changes, with optional cloud-model escalation.**
 
-**Release status:** **v1.4.0 stable candidate under review (not yet published)** · **v1.4.0a1 testing prerelease available** · **v1.3.1 previous stable release** · Python 3.10–3.12 · Node.js 18+ for the npm launcher.
+**Release status:** **v1.4.1 patch candidate under review (not yet published)** · **v1.4.0a1 testing prerelease available** · **v1.3.1 previous stable release** · Python 3.10–3.12 · Node.js 18+ for the npm launcher.
 
-The **v1.4 architecture** separates the **Agent** (repository intelligence, planning, guarded tools and verification) from the **Model Runtime** (local model management, inference and optional cloud-provider adapters). The published `v1.4.0a1` prerelease tests this same architecture before the stable `v1.4.0` release. A candidate for `v1.4.0` is under review, with the comparative LocdexBench suite explicitly deferred.
+The **v1.4 architecture** separates the **Agent** (repository intelligence, planning, guarded tools and verification) from the **Model Runtime** (local model management, inference and optional cloud-provider adapters). The published `v1.4.0a1` prerelease tests this same architecture before the stable `v1.4.0` release. The source of a `v1.4.1` patch candidate is under review; this does not establish registry availability. Comparative LocdexBench evaluation remains experimental.
 
-**Start here:** [v1.4 stable development roadmap](docs/V1_4_STABLE_ROADMAP.md) · [Local-model quickstart](docs/QUICKSTART_LOCAL_MODELS.md) · [Agent vs runtime architecture](#two-architectural-layers-one-v14-release) · [Sponsor / funding roadmap](docs/FUNDING_AND_ROADMAP.md) · [LocdexBench plan](benchmarks/LOCDEXBENCH_DESIGN.md) · [Contribute](#development)
+**Start here:** [v1.4.1 patch notes](docs/RELEASE_NOTES_V1_4_1.md) · [Multi-agent orchestration](docs/MULTIAGENT.md) · [v1.4 stable development roadmap](docs/V1_4_STABLE_ROADMAP.md) · [Local-model quickstart](docs/QUICKSTART_LOCAL_MODELS.md) · [Agent vs runtime architecture](#two-architectural-layers-one-v14-release) · [Sponsor / funding roadmap](docs/FUNDING_AND_ROADMAP.md) · [LocdexBench plan](benchmarks/LOCDEXBENCH_DESIGN.md) · [Contribute](#development)
 
-> **Versioning:** `v1.3.1` is the previous stable release. `v1.4.0a1` is available for testing via `pip install "locdex==1.4.0a1"` or `npm install -g @locdex/cli@next`. Stable `v1.4.0` is a release candidate, not yet published.
+> **Versioning:** `v1.3.1` is the previous stable release. `v1.4.0a1` is available for testing via `pip install "locdex==1.4.0a1"` or `npm install -g @locdex/cli@next`. The `v1.4.1` patch is a release candidate, not yet published.
+
+## Multi-agent orchestration
+
+The `locdex agents plan` command previews agent dependency waves and concurrency **without loading any GGUF model or modifying Git worktrees**. Separate `locdex agents run` executes configured agents in isolated worktrees. See [multi-agent orchestration](docs/MULTIAGENT.md) for the low-memory sample and execution requirements.
 
 ## Install Locdex
 

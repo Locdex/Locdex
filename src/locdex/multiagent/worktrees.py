@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import hashlib
 import shutil
 import subprocess
 import uuid
@@ -173,6 +174,25 @@ def workspace_changes(workspace: AgentWorkspace) -> list[str]:
     return sorted(paths)
 
 
+def _changed_path_signature(workspace: AgentWorkspace, relative: str) -> str:
+    """Match identical inherited content; reject escaped paths before copying."""
+    root = Path(workspace.path).resolve()
+    candidate = (root / relative).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise WorktreeError("Inherited agent path escaped its worktree.") from exc
+    if not candidate.exists():
+        return "deleted"
+    if not candidate.is_file():
+        raise WorktreeError("Only regular agent file changes can be inherited.")
+    digest = hashlib.sha256()
+    with candidate.open("rb") as handle:
+        for data in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(data)
+    return "file:" + digest.hexdigest()
+
+
 def inherit_workspace_changes(
     target: AgentWorkspace,
     sources: list[AgentWorkspace],
@@ -185,10 +205,15 @@ def inherit_workspace_changes(
         for path in changed:
             owners.setdefault(path, []).append(source.name)
 
+    by_name = {source.name: source for source in sources}
     conflicts = {
         path: names
         for path, names in owners.items()
         if len(names) > 1
+        and len({
+            _changed_path_signature(by_name[name], path)
+            for name in names
+        }) > 1
     }
     if conflicts:
         return {
@@ -201,8 +226,6 @@ def inherit_workspace_changes(
     target_root = Path(target.path).resolve()
     copied: list[str] = []
     deleted: list[str] = []
-    by_name = {source.name: source for source in sources}
-
     for source_name, paths in source_changes.items():
         source_root = Path(by_name[source_name].path).resolve()
         for relative in paths:

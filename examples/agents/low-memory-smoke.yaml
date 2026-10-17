@@ -1,0 +1,25 @@
+version: 1
+defaults:
+  model: smoke
+  mode: local_only
+  permission_mode: plan
+  sandbox_mode: read-only
+  max_steps: 3
+
+agents:
+  - name: inspect
+    role: code-reviewer
+    priority: 10
+    task: Inspect the repository for its main entry point and summarize the module structure.
+
+  - name: tests
+    role: test-analyst
+    priority: 5
+    task: Identify the current test commands and likely validation coverage. Do not modify files.
+
+  - name: report
+    role: verifier
+    depends_on:
+      - inspect
+      - tests
+    task: Reconcile upstream observations and report the smallest concrete next validation step. Do not modify files.

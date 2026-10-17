@@ -20,7 +20,7 @@ def test_release_candidate_versions_match_across_artifacts():
     npm = json.loads((ROOT / "npm/locdex-cli/package.json").read_text(encoding="utf-8"))
     installer = (ROOT / "npm/locdex-cli/scripts/install.js").read_text(encoding="utf-8")
 
-    assert python_version == "1.4.0"
+    assert python_version == "1.4.1"
     assert locdex.__version__ == python_version
     assert npm["version"] == python_version
     assert f"locdex=={python_version}" in installer
