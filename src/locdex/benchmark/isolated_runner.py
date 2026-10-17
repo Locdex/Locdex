@@ -150,6 +150,80 @@ def _call_docker(argv: list[str], name: str, timeout: int) -> subprocess.Complet
 
 
 
+
+def _verify_docker_checksum_with_progress(
+    argv: list[str], name: str, timeout: int = 900,
+) -> subprocess.CompletedProcess[str]:
+    """Bounded offline SHA-256 check with live, non-sensitive byte-count events.
+
+    The model digest remains private process output; only numeric progress is
+    relayed. A failed or timed-out check always prevents agent execution.
+    """
+    started = time.monotonic()
+    last_notice = 0
+    with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+        proc = None
+        offset = 0
+        pending = ""
+        try:
+            proc = subprocess.Popen(argv, stdout=out, stderr=err)
+            while True:
+                remaining = timeout - (time.monotonic() - started)
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(argv, timeout)
+                try:
+                    proc.wait(timeout=min(15, remaining))
+                    finished = True
+                except subprocess.TimeoutExpired:
+                    finished = False
+
+                out.flush()
+                out.seek(offset)
+                data = out.read(65536)
+                offset = out.tell()
+                pending += data.decode("utf-8", errors="replace")
+                lines = pending.split("\n")
+                pending = lines.pop()
+                for line in lines:
+                    match = re.fullmatch(r"GGUF_PROGRESS (\d+) (\d+)", line.strip())
+                    if match:
+                        processed, total = int(match[1]), int(match[2])
+                        if total > 0 and 0 <= processed <= total:
+                            print(
+                                f"[LocdexBench] GGUF SHA-256: {processed * 100 // total}% "
+                                f"({processed // (1024 * 1024)} MiB read).",
+                                flush=True,
+                            )
+
+                elapsed = int(time.monotonic() - started)
+                if not finished and elapsed - last_notice >= 30:
+                    print(
+                        f"[LocdexBench] GGUF verification still running ({elapsed}s / {timeout}s).",
+                        flush=True,
+                    )
+                    last_notice = elapsed
+                if finished:
+                    out.seek(0)
+                    stdout = out.read().decode("utf-8", errors="replace")
+                    return subprocess.CompletedProcess(
+                        argv, proc.returncode, stdout=stdout, stderr="",
+                    )
+        finally:
+            if proc is not None and proc.poll() is None:
+                proc.kill()
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    pass
+            try:
+                subprocess.run(
+                    ["docker", "rm", "-f", name],
+                    capture_output=True, check=False, timeout=15,
+                )
+            except (OSError, subprocess.SubprocessError):
+                pass
+
+
 def _prepare_model_volume(
     *, image: str, model_path: Path, digest: str,
     requested_volume: str | None = None,
@@ -218,12 +292,26 @@ def _prepare_model_volume(
 
         print("[LocdexBench] Verifying SHA-256 of Docker-native GGUF...", flush=True)
         check_name = "locdexbench-model-verify-" + uuid.uuid4().hex[:12]
-        checksum_script = (
-            "import hashlib; h=hashlib.sha256(); "
-            "f=open('/models/model.gguf','rb'); "
-            "[(h.update(chunk)) for chunk in iter(lambda: f.read(4*1024*1024), b'')]; "
-            "print(h.hexdigest())"
-        )
+        checksum_script = """\
+import hashlib
+import os
+
+path = "/models/model.gguf"
+total = os.stat(path).st_size
+digest = hashlib.sha256()
+processed = 0
+last_report = 0
+
+with open(path, "rb") as model_file:
+    while chunk := model_file.read(8 * 1024 * 1024):
+        digest.update(chunk)
+        processed += len(chunk)
+        if processed - last_report >= 128 * 1024 * 1024:
+            print(f"GGUF_PROGRESS {processed} {total}", flush=True)
+            last_report = processed
+
+print(f"GGUF_SHA256 {digest.hexdigest()}", flush=True)
+"""
         check_args = [
             "docker", "run", "--rm", "--name", check_name,
             "--network", "none", "--read-only", "--cap-drop", "ALL",
@@ -232,13 +320,21 @@ def _prepare_model_volume(
             "--tmpfs", "/tmp:rw,nosuid,nodev,size=128m",
             "--user", "65534:65534",
             "--mount", f"type=volume,source={volume},target=/models,readonly",
-            image, "python", "-c", checksum_script,
+            image, "python", "-u", "-c", checksum_script,
         ]
         try:
-            checked = _call_docker(check_args, check_name, 180)
+            checked = _verify_docker_checksum_with_progress(check_args, check_name, 900)
         except subprocess.TimeoutExpired as exc:
-            raise BenchmarkRunError("Timed out verifying Docker model volume.") from exc
-        if checked.returncode or checked.stdout.strip() != digest:
+            raise BenchmarkRunError(
+                "Timed out verifying Docker model volume after 900s. "
+                "The model was not used; inspect Docker disk and memory pressure."
+            ) from exc
+        digest_lines = [
+            line.removeprefix("GGUF_SHA256 ")
+            for line in checked.stdout.splitlines()
+            if re.fullmatch(r"GGUF_SHA256 [a-f0-9]{64}", line)
+        ]
+        if checked.returncode or len(digest_lines) != 1 or digest_lines[0] != digest:
             raise BenchmarkRunError(
                 "Docker model volume checksum mismatch or verification failure. "
                 "Refusing to run an unverified model."
