@@ -700,6 +700,7 @@ def _run_interactive_impl(
                 print(f"session={state.session_id}")
                 print(f"repo={state.repo_path}")
                 print(f"model={state.model}")
+                print(f"model_worker={model_pool.status}")
                 print(
                     f"permissions={state.permission_mode}"
                 )
