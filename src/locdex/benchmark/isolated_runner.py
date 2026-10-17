@@ -86,6 +86,17 @@ def docker_arguments(
     if model_key is not None:
         env += ["-e", f"LOCDEX_MODEL={model_key}", "-e", "LOCDEX_MODEL_PATH=/models/model.gguf",
                 "-e", "LOCDEX_BENCH_PROGRESS=1"]
+        raw_context = os.getenv("LOCDEX_BENCH_CONTEXT_TOKENS", "").strip()
+        if raw_context:
+            try:
+                context = int(raw_context)
+                if not (2048 <= context <= 8192 and context % 256 == 0):
+                    raise ValueError
+            except ValueError as exc:
+                raise BenchmarkRunError(
+                    "LOCDEX_BENCH_CONTEXT_TOKENS must be a multiple of 256 between 2048 and 8192."
+                ) from exc
+            env += ["-e", f"LOCDEX_LLAMA_CONTEXT_TOKENS={context}"]
         override = os.getenv("LOCDEX_INFERENCE_TIMEOUT_SECONDS", "").strip()
         if override:
             try:
