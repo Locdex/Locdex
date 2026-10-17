@@ -54,6 +54,19 @@ locdex task --task "Investigate the failing tests and propose a minimal fix."
 
 Locdex supports interactive progress, repository retrieval, permission prompts, verification, and checkpoints. Interactive sessions can preload a selected local model in a separate process and reuse the initialized model across sequential tasks. Local execution speed depends on model size, system memory, storage, and CPU/GPU capabilities.
 
+## Automatic release notifications
+
+When Locdex starts interactively, it can check the public PyPI registry for a newer stable version in the background. Checks are cached for 24 hours and never update packages without user action. The update notice refers to the Python core; the matching npm wrapper may be published separately.
+
+```bash
+locdex update status
+locdex update check
+locdex update off
+locdex update on
+```
+
+Set `LOCDEX_OFFLINE=1` to disable network checks in offline environments. See [update-check policy](https://github.com/Locdex/Locdex/blob/main/docs/UPDATE_CHECKS.md) for details.
+
 ## Optional cloud providers
 
 Locdex can use configured cloud models, but cloud access is **not required** for local operation. Any cloud provider must be explicitly configured and authorized; model configuration does not bypass file permissions or sandbox policy.
