@@ -1,86 +1,77 @@
-# @locdex/cli
+# Locdex
 
-npm bootstrapper and launcher for the Python Locdex coding-agent runtime.
+**An open-source, local-first coding agent for working inside software repositories.**
 
-**Release tracks:** Locdex **v1.4.0 stable is under development**. `@locdex/cli@1.4.0-alpha.1` is the published v1.4 testing prerelease; it uses the **same architecture** planned for stable `@locdex/cli@1.4.0`. The previous stable Locdex release is v1.3.1. Do not interpret the alpha as a different architecture, or assume the stable npm package has shipped.
+Locdex combines repository-aware context gathering, guarded file-editing tools, code verification, and local model inference. Cloud model providers can be configured separately when needed.
+
+The `@locdex/cli` npm package is a **launcher for the Python Locdex runtime**, not a JavaScript reimplementation. During installation, it creates a dedicated Python environment and installs the corresponding version of the `locdex` Python package.
 
 ## Install
 
+Requirements: **Node.js 18+**, **Python 3.10–3.12**, and Git. Local inference additionally requires enough RAM for the selected model.
+
 ```bash
-npm install -g @locdex/cli@next
+npm install -g @locdex/cli --foreground-scripts
 locdex --version
-locdex model list
 ```
 
-The npm package creates a Locdex-owned Python virtual environment and installs the matching Python `locdex` package there. It does **not** rewrite the Locdex runtime in Node.js.
+For the testing prerelease, use `npm install -g @locdex/cli@next --foreground-scripts` instead. The `latest` and `next` channels can resolve to different versions.
 
-## Requirements
-
-- Node.js 18+
-- Python 3.10, 3.11, or 3.12
-
-Python discovery can be overridden:
-
-```bash
-LOCDEX_PYTHON=/path/to/python npm install -g @locdex/cli@next
-```
-
-On Windows PowerShell:
+If automatic Python discovery fails, set `LOCDEX_PYTHON` to a supported Python executable before installing:
 
 ```powershell
-$env:LOCDEX_PYTHON = "C:\Python311\python.exe"
-npm install -g @locdex/cli@next
+$env:LOCDEX_PYTHON = "C:\\Python311\\python.exe"
+npm install -g @locdex/cli --foreground-scripts
 ```
 
-## Runtime and models
+## Get started with a local model
 
-The npm postinstall does not download a model or install `llama-cpp-python`. Those remain explicit user choices:
+The npm installer does **not** download a model or install the optional llama.cpp inference backend automatically. Set these up explicitly:
 
 ```bash
+locdex status
 locdex runtime install --backend auto
+locdex runtime verify
 locdex model list
-locdex model install qwen25-7b
-locdex model use qwen25-7b
+locdex model install smoke
+locdex model use smoke
 ```
 
-## Development/testing override
+The `smoke` profile is intended for installation checks, not reliable production coding. For larger repositories or substantive coding tasks, select a suitable model using the hardware guidance in `locdex model list`.
 
-Before the Python package is published, the wrapper can install a local path, Git URL, wheel, or alternate pip requirement:
+Start an interactive Locdex session from a repository:
 
 ```bash
-LOCDEX_PYTHON_PACKAGE=/path/to/Locdex npm install -g ./npm/locdex-cli
+cd my-project
+locdex
 ```
 
-To validate/package the npm wrapper without creating the managed Python environment:
+Or use a single task:
 
 ```bash
-LOCDEX_NPM_SKIP_BOOTSTRAP=1 npm install
-npm run check
-npm pack --dry-run --ignore-scripts
+locdex task --task "Investigate the failing tests and propose a minimal fix."
 ```
 
-The npm wrapper and Python package versions should be released together.
+Locdex supports interactive progress, repository retrieval, permission prompts, verification, and checkpoints. Interactive sessions can preload a selected local model in a separate process and reuse the initialized model across sequential tasks. Local execution speed depends on model size, system memory, storage, and CPU/GPU capabilities.
 
+## Optional cloud providers
 
-### Show the Python bootstrap installer progress
+Locdex can use configured cloud models, but cloud access is **not required** for local operation. Any cloud provider must be explicitly configured and authorized; model configuration does not bypass file permissions or sandbox policy.
 
-npm hides some lifecycle-script output by default. For full stage messages and pip's real download percentages, install in a foreground terminal:
+See the [main documentation](https://github.com/Locdex/Locdex#readme) for provider setup and security behavior.
 
-```powershell
-npm install -g @locdex/cli@next --foreground-scripts --loglevel=info
+## Troubleshooting
+
+If the command is unavailable after installation, verify the npm global executable directory is on `PATH` and try opening a new terminal.
+
+```bash
+locdex --version
+locdex runtime status
+locdex model status
 ```
 
-Locdex reports stages for Python environment creation, Python package installation, and CLI verification. Percentages are shown for wheel transfers only when pip knows the total bytes; no artificial overall setup percentage is generated.
+If npm hides installation progress, use `--foreground-scripts --loglevel=info`. The package's Python bootstrap requires a working Python installation and access to PyPI. Model downloads and runtime installation are separate steps.
 
+For issues, feature requests, documentation, and source code, visit [Locdex on GitHub](https://github.com/Locdex/Locdex).
 
-## Package release verification
-
-The scoped package is published under the `@locdex` npm organization. The organization must be created in npm's dashboard by an authorized owner; GitHub organization membership alone does not grant npm ownership.
-
-1. Confirm the corresponding Python version (`locdex==1.4.0a1`) is available on PyPI. The npm postinstall requires it; publishing npm first produces a broken user install.
-2. Run `npm run check` and `npm pack --dry-run --ignore-scripts` from this directory. Inspect the tarball file listing before publishing.
-3. Verify `npm whoami` identifies a maintainer authorized to publish under `@locdex`, and enable npm two-factor authentication.
-4. Publish the prerelease using `npm publish --access public --tag next`. The `next` dist-tag keeps this alpha off npm's default `latest` installation path until general-release acceptance tests succeed.
-5. Test a fresh installation with `npm install -g @locdex/cli@next --foreground-scripts --loglevel=info`, and confirm `locdex --version` and `locdex model list` work.
-
-Do not publish from a checkout containing secrets, and never put npm auth tokens in this repository. npm package publication requires interactive account authorization and is distinct from preparing this source tree.
+**License:** MIT.
