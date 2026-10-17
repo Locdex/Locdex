@@ -155,7 +155,15 @@ def update_notice(status: dict[str, Any]) -> str | None:
     if not status.get("update_available"):
         return None
     latest = status.get("latest")
-    return f"Locdex {latest} is available (installed: {__version__}). See {RELEASES_URL}"
+    return (
+        f"Locdex update available: {__version__} → {latest}.\n"
+        f"Review changes: {RELEASES_URL}\n"
+        "To update manually, run one of these commands after verifying that "
+        "the corresponding package version has been published:\n"
+        "  Python: python -m pip install --upgrade locdex\n"
+        "  npm:    npm install -g @locdex/cli@latest --foreground-scripts\n"
+        "Locdex will not install updates automatically."
+    )
 
 
 class BackgroundUpdateCheck:

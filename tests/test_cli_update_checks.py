@@ -71,7 +71,12 @@ def test_background_checker_does_not_block_and_notifies_once(monkeypatch, tmp_pa
     assert checker._thread is not None
     checker._thread.join(timeout=2)
     notice = checker.poll_notice()
-    assert "Locdex 9.5.0 is available" in notice
+    assert "Locdex update available:" in notice
+    assert "9.5.0" in notice
+    assert "python -m pip install --upgrade locdex" in notice
+    assert "npm install -g @locdex/cli@latest --foreground-scripts" in notice
+    assert "will not install updates automatically" in notice
+    assert "\\n" not in notice
     assert updates.RELEASES_URL in notice
     assert checker.poll_notice() is None
 
@@ -164,7 +169,13 @@ def test_no_update_notification_on_equal_or_older_releases(monkeypatch, tmp_path
 
 def test_background_checker_keeps_no_package_install_capability():
     import inspect
-    source = inspect.getsource(updates)
+    # User-facing notices may display upgrade commands; only inspect code
+    # paths that execute during checks for package-install side effects.
+    source = (
+        inspect.getsource(updates.BackgroundUpdateCheck)
+        + inspect.getsource(updates.check_now)
+        + inspect.getsource(updates.latest_stable_version)
+    )
     assert "subprocess" not in source
     assert "pip install" not in source
     assert "npm install" not in source
