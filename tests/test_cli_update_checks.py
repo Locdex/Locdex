@@ -169,3 +169,45 @@ def test_background_checker_keeps_no_package_install_capability():
     assert "pip install" not in source
     assert "npm install" not in source
     assert "requests.post" not in source
+
+
+def test_interactive_launch_starts_update_check_without_waiting(
+    monkeypatch, tmp_path, capsys,
+):
+    from types import SimpleNamespace
+    from locdex.cli import interactive
+
+    events = []
+
+    class FakeCheck:
+        def __init__(self):
+            self.seen = False
+
+        def start(self, *, network_allowed=True):
+            events.append(("checking", network_allowed))
+
+        def poll_notice(self):
+            if not self.seen:
+                self.seen = True
+                return "Locdex 9.5.0 is available."
+            return None
+
+    class FakePool:
+        def start(self, model):
+            events.append(("preload", model))
+
+    state = SimpleNamespace(
+        model="smoke",
+        sandbox_mode="workspace-network",
+        repo_path=str(tmp_path),
+        save=lambda: events.append("saved"),
+    )
+    monkeypatch.setattr(interactive, "_find_resume_session", lambda *a: state)
+    monkeypatch.setattr(interactive, "_print_header", lambda *a: None)
+    monkeypatch.setattr(interactive, "BackgroundUpdateCheck", FakeCheck)
+    monkeypatch.setattr("builtins.input", lambda prompt: "exit")
+
+    assert interactive._run_interactive_impl(str(tmp_path), model_pool=FakePool()) == 0
+    assert events[0] == ("checking", True)
+    assert events[1] == ("preload", "smoke")
+    assert "Locdex 9.5.0 is available." in capsys.readouterr().out
